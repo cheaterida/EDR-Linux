@@ -1,0 +1,203 @@
+{
+  "schema_version": "v0.1",
+  "gate": "verify-m3",
+  "passed": true,
+  "thresholds": {
+    "min_detections": 6,
+    "max_false_positives": 2
+  },
+  "metrics": {
+    "detections": 12,
+    "malicious_total": 13,
+    "false_positives": 0,
+    "benign_total": 13,
+    "max_rss_kb": 13424,
+    "user_cpu_sec": 0.11236,
+    "sys_cpu_sec": 0.055177,
+    "process_access_ok": true
+  },
+  "results": [
+    {
+      "sample_id": "S01",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P001-suspicious-shell-download"
+    },
+    {
+      "sample_id": "S02",
+      "malicious": true,
+      "detected": true,
+      "decision": "alert",
+      "rule_id": "P002-credential-file-access"
+    },
+    {
+      "sample_id": "S03",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P003-reverse-shell-pattern"
+    },
+    {
+      "sample_id": "S04",
+      "malicious": true,
+      "detected": true,
+      "decision": "alert",
+      "rule_id": "P004-python-listener"
+    },
+    {
+      "sample_id": "S05",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P005-temp-exec"
+    },
+    {
+      "sample_id": "S06",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "N001-suspicious-listener"
+    },
+    {
+      "sample_id": "S07",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "N002-known-bad-remote"
+    },
+    {
+      "sample_id": "S08",
+      "malicious": true,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F01",
+      "malicious": false,
+      "detected": false,
+      "decision": "allow",
+      "rule_id": "process-access-whitelist"
+    },
+    {
+      "sample_id": "F02",
+      "malicious": false,
+      "detected": false,
+      "decision": "allow",
+      "rule_id": "process-access-whitelist"
+    },
+    {
+      "sample_id": "F03",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F04",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F05",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F06",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F07",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F08",
+      "malicious": false,
+      "detected": false,
+      "decision": "allow",
+      "rule_id": "process-access-whitelist"
+    },
+    {
+      "sample_id": "S09",
+      "malicious": true,
+      "detected": true,
+      "decision": "alert",
+      "rule_id": "process-access-blacklist"
+    },
+    {
+      "sample_id": "F09",
+      "malicious": false,
+      "detected": false,
+      "decision": "allow",
+      "rule_id": "process-access-whitelist"
+    },
+    {
+      "sample_id": "S10",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P003b-python-reverse-shell"
+    },
+    {
+      "sample_id": "S11",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P003c-socat-reverse-shell"
+    },
+    {
+      "sample_id": "S12",
+      "malicious": true,
+      "detected": true,
+      "decision": "block",
+      "rule_id": "P003d-perl-reverse-shell"
+    },
+    {
+      "sample_id": "S13",
+      "malicious": true,
+      "detected": true,
+      "decision": "alert",
+      "rule_id": "process-access-blacklist"
+    },
+    {
+      "sample_id": "F10",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F11",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F12",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    },
+    {
+      "sample_id": "F13",
+      "malicious": false,
+      "detected": false,
+      "decision": "none",
+      "rule_id": ""
+    }
+  ]
+}

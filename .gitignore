@@ -1,0 +1,40 @@
+# v0.2 BPF build artifacts — host-kernel bound, never committed.
+# R-CLI1 reproducibility comes from the Makefile rule that regenerates
+# these, not from the bytes on disk.
+internal/bpf/probes/vmlinux.h
+internal/bpf/probes/*.bpf.o
+internal/bpf/probes/*.bpf.linked.o
+
+# Go test coverage + gofumpt module cache
+*.test
+*.out
+coverage.txt
+
+# Local scratch
+var/
+*.swp
+.DS_Store
+
+# Go toolchain (host-specific, not project code)
+.tools/
+
+# Compiled binaries
+edr-agent
+edrctl
+
+# BPF probes source directory c/ (intermediate build artifacts)
+internal/bpf/c/
+
+# Runtime generated policy version backups
+configs/.versions/
+
+# Go test temp directories
+internal/control/tmp/
+
+# Development prompt / session transcript files
+EDR_prompt*.txt
+EDR_V0.15_prompt
+readme-edr.md
+
+# errcheck linter config
+.errcheck

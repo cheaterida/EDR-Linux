@@ -1,0 +1,41 @@
+# =============================================================================
+# Dockerfile.bpf — minimal image for EDR agent BPF integration testing
+# =============================================================================
+# Uses the host kernel (via --pid=host) so BPF programs attach to real
+# kernel functions. Only the edr-agent binary and BPF .o files are
+# mounted from the host — no Go toolchain or build deps needed at
+# runtime.
+#
+# Build:  docker build -t edr-bpf-test -f Dockerfile.bpf .
+# Run:    ./scripts/run_bpf_docker.sh
+# =============================================================================
+
+FROM ubuntu:24.04
+
+# Avoid interactive prompts during package install
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # bpftool is a virtual package provided by linux-tools-common
+    linux-tools-common \
+    linux-tools-generic \
+    strace \
+    # For testing: netcat (blacklist target), procps (ps/kill), jq (json parsing)
+    netcat-openbsd \
+    procps \
+    jq \
+    # Agent dynamic linking: libbpf + libelf + zlib + zstd
+    libbpf1 \
+    libelf1t64 \
+    zlib1g \
+    libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directories
+RUN mkdir -p /edr/probes /edr/configs /edr/runtime
+
+WORKDIR /edr
+
+# The agent binary and BPF objects are mounted at runtime from the host.
+# Default command just shows readiness.
+CMD ["/bin/bash", "-c", "echo 'EDR BPF test container ready. Mount artifacts and run /edr/edr-agent.'"]

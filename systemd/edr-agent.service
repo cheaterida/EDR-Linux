@@ -1,0 +1,73 @@
+[Unit]
+Description=Teaching EDR v0.16 Agent
+Documentation=man:edr-agent(8)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/edr
+ExecStart=/opt/edr/edr-agent --config /etc/edr/agent.json
+ExecReload=/opt/edr/edrctl --socket /opt/edr/var/run/edr-agent.sock policy reload
+Restart=on-failure
+RestartSec=3
+
+# --- v0.15 runtime hardening (ring3 last sprint) ---
+# Privilege & process
+NoNewPrivileges=true
+LockPersonality=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+# Filesystem
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+StateDirectory=edr
+LogsDirectory=edr
+ConfigurationDirectory=edr
+ReadWritePaths=/var/lib/edr /var/log/edr /opt/edr/var
+UMask=0077
+
+# Capabilities — R-C1: minimum set, each justified by a concrete code
+# location. CAP_SYS_PTRACE removed (unused). Keep this list in sync
+# with the capability matrix in DEV_IRON_RULES.md §R-C1.
+#
+# CAP_KILL          internal/response/response.go:54  process.Kill()
+# CAP_DAC_OVERRIDE  internal/response/response.go:62  chmodNoFollow (fix_permissions)
+# CAP_NET_ADMIN     internal/response/nft.go          nftables rule management
+# CAP_SETUID        no direct syscall; retained for Go runtime process
+#                   attribute changes during Kill / namespace operations
+# CAP_SETGID        no direct syscall; retained alongside CAP_SETUID for
+#                   symmetry (Go runtime may require paired privileges)
+# CAP_DAC_READ_SEARCH internal/collector/collector.go:91  os.ReadDir under
+#                     /proc; internal/control/server.go:457 backup dir traversal
+CapabilityBoundingSet=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN
+
+# Syscall filter — @system-service is the curated baseline that lets
+# Go runtime syscalls through while blocking raw socket creation,
+# kexec_load, init_module, and similar dangerous calls. EPERM is
+# returned for blocked calls so Go's runtime does not panic.
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitCORE=0
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
