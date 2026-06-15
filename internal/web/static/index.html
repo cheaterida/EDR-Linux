@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDR Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+header{background:#1e293b;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}
+h1{font-size:18px;font-weight:600;color:#38bdf8}
+.status-badge{padding:4px 12px;border-radius:12px;font-size:12px;font-weight:500}
+.status-ok{background:#064e3b;color:#34d399}
+.status-err{background:#7f1d1d;color:#fca5a5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;padding:24px}
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:20px}
+.card h2{font-size:13px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px}
+.metric{font-size:32px;font-weight:700;color:#f1f5f9}
+.metric-sm{font-size:14px;color:#64748b;margin-top:4px}
+.events{padding:0 24px 24px}
+.events h2{font-size:13px;font-weight:500;color:#94a3b8;text-transform:uppercase;margin-bottom:12px}
+.event-list{background:#1e293b;border:1px solid #334155;border-radius:8px;max-height:400px;overflow-y:auto}
+.event-item{padding:10px 16px;border-bottom:1px solid #1e293b;font-size:13px;display:flex;gap:12px;align-items:center}
+.event-item:last-child{border-bottom:none}
+.badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-critical{background:#dc2626;color:#fff}
+.badge-high{background:#ea580c;color:#fff}
+.badge-medium{background:#ca8a04;color:#fff}
+.badge-low{background:#16a34a;color:#fff}
+.badge-info{background:#2563eb;color:#fff}
+.event-time{color:#64748b;font-size:11px;min-width:70px}
+.event-rule{color:#38bdf8;font-weight:500}
+.event-detail{color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chart-bar{display:flex;align-items:end;gap:2px;height:60px;margin-top:8px}
+.bar{background:#38bdf8;border-radius:2px 2px 0 0;min-width:8px;flex:1;transition:height 0.3s}
+#connection-status{position:fixed;bottom:16px;right:16px;padding:6px 12px;border-radius:6px;font-size:11px;z-index:100}
+.conn-ok{background:#064e3b;color:#34d399}
+.conn-err{background:#7f1d1d;color:#fca5a5}
+</style>
+</head>
+<body>
+<header>
+<h1>EDR Agent Dashboard</h1>
+<span id="agent-status" class="status-badge status-ok">Connected</span>
+</header>
+
+<div class="grid">
+<div class="card">
+<h2>Events Processed</h2>
+<div class="metric" id="event-count">-</div>
+<div class="metric-sm">Total runs: <span id="run-count">-</span></div>
+</div>
+<div class="card">
+<h2>Responses Taken</h2>
+<div class="metric" id="response-count">-</div>
+<div class="metric-sm">Suppressed: <span id="suppressed-count">-</span></div>
+</div>
+<div class="card">
+<h2>BPF Status</h2>
+<div class="metric" id="bpf-status">-</div>
+<div class="metric-sm">Events drained: <span id="bpf-drained">-</span></div>
+</div>
+<div class="card">
+<h2>Uptime</h2>
+<div class="metric" id="uptime">-</div>
+<div class="metric-sm" id="started-at">-</div>
+</div>
+<div class="card">
+<h2>Rule Hits</h2>
+<div class="chart-bar" id="rule-chart"></div>
+</div>
+</div>
+
+<div class="events">
+<h2>Recent Events</h2>
+<div class="event-list" id="event-list">
+<div class="event-item"><span class="event-detail">Waiting for events...</span></div>
+</div>
+</div>
+
+<div id="connection-status" class="conn-ok">SSE Connected</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let sseRetry = 0;
+
+function formatUptime(sec) {
+if (sec < 60) return sec + 's';
+if (sec < 3600) return Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+return h + 'h ' + m + 'm';
+}
+
+function severityBadge(s) {
+const cls = 'badge badge-' + (s || 'info');
+return '<span class="' + cls + '">' + (s || 'info') + '</span>';
+}
+
+function addEvent(ev) {
+const list = $('event-list');
+if (list.children.length === 1 && list.children[0].textContent === 'Waiting for events...') {
+list.innerHTML = '';
+}
+const div = document.createElement('div');
+div.className = 'event-item';
+const t = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '-';
+const subject = ev.subject || {};
+const name = subject.name || subject.process_name || '';
+div.innerHTML = '<span class="event-time">' + t + '</span>' +
+severityBadge(ev.severity) +
+'<span class="event-rule">' + (ev.rule_id || '-') + '</span>' +
+'<span class="event-detail">' + (ev.category || '') + ' ' + name + '</span>';
+list.insertBefore(div, list.firstChild);
+while (list.children.length > 100) list.removeChild(list.lastChild);
+}
+
+function updateMetrics(m) {
+$('event-count').textContent = (m.event_count || 0).toLocaleString();
+$('run-count').textContent = (m.run_count || 0).toLocaleString();
+$('response-count').textContent = (m.response_count || 0).toLocaleString();
+$('suppressed-count').textContent = (m.suppressed_total || 0).toLocaleString();
+const bpf = m.bpf || {};
+$('bpf-status').textContent = bpf.attached ? 'Active' : 'Inactive';
+$('bpf-status').style.color = bpf.attached ? '#34d399' : '#f87171';
+$('bpf-drained').textContent = (bpf.events_drained || 0).toLocaleString();
+if (m.uptime_sec != null) $('uptime').textContent = formatUptime(m.uptime_sec);
+if (m.started_at) {
+const d = new Date(m.started_at);
+$('started-at').textContent = 'Started: ' + d.toLocaleString();
+}
+// Rule hit chart
+const hits = m.rule_hits || {};
+const entries = Object.entries(hits).sort((a,b) => b[1]-a[1]).slice(0, 8);
+const max = entries.length > 0 ? entries[0][1] : 1;
+const chart = $('rule-chart');
+chart.innerHTML = '';
+entries.forEach(([rule, count]) => {
+const bar = document.createElement('div');
+bar.className = 'bar';
+bar.style.height = Math.max(4, (count/max)*60) + 'px';
+bar.title = rule + ': ' + count;
+chart.appendChild(bar);
+});
+}
+
+async function fetchJSON(url) {
+const r = await fetch(url);
+return r.json();
+}
+
+async function loadInitial() {
+try {
+const [metrics, responses] = await Promise.all([
+fetchJSON('/api/metrics'),
+fetchJSON('/api/responses')
+]);
+updateMetrics(metrics);
+if (responses && responses.length) {
+responses.slice(-20).reverse().forEach(addEvent);
+}
+$('agent-status').className = 'status-badge status-ok';
+$('agent-status').textContent = 'Connected';
+} catch(e) {
+$('agent-status').className = 'status-badge status-err';
+$('agent-status').textContent = 'Error';
+}
+}
+
+function connectSSE() {
+const es = new EventSource('/events');
+es.onopen = () => {
+$('connection-status').className = 'conn-ok';
+$('connection-status').textContent = 'SSE Connected';
+sseRetry = 0;
+};
+es.onmessage = (e) => {
+try {
+const ev = JSON.parse(e.data);
+if (ev.type === 'metrics') {
+updateMetrics(ev.data);
+} else if (ev.type === 'event') {
+addEvent(ev.data);
+} else {
+addEvent(ev);
+}
+} catch(err) {}
+};
+es.onerror = () => {
+$('connection-status').className = 'conn-err';
+$('connection-status').textContent = 'SSE Reconnecting...';
+es.close();
+sseRetry = Math.min(sseRetry + 1, 10);
+setTimeout(connectSSE, 1000 * sseRetry);
+};
+}
+
+loadInitial();
+connectSSE();
+setInterval(() => fetchJSON('/api/metrics').then(updateMetrics).catch(()=>{}), 10000);
+</script>
+</body>
+</html>

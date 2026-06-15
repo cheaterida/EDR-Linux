@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EDR v0.1 Event",
+  "type": "object",
+  "required": ["schema_version", "timestamp", "event_id", "host", "category", "severity", "action", "decision"],
+  "properties": {
+    "schema_version": { "const": "v0.1" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "event_id": { "type": "string" },
+    "host": { "type": "string" },
+    "category": { "enum": ["process", "file", "network", "baseline"] },
+    "severity": { "enum": ["low", "medium", "high", "critical"] },
+    "subject": { "type": "object" },
+    "object": { "type": "object" },
+    "action": { "type": "string" },
+    "decision": { "enum": ["allow", "alert", "block"] },
+    "rule_id": { "type": "string" },
+    "evidence": { "type": "object" }
+  }
+}

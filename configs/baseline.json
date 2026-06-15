@@ -1,0 +1,9 @@
+{
+  "schema_version": "v0.1",
+  "checks": [
+    { "id": "B001-passwd-exists", "path": "/etc/passwd", "must_exist": true, "max_mode": "0644" },
+    { "id": "B002-shadow-restricted", "path": "/etc/shadow", "must_exist": true, "max_mode": "0640" },
+    { "id": "B003-ssh-config", "path": "/etc/ssh/sshd_config", "must_exist": true, "max_mode": "0644" }
+  ]
+}
+ 
