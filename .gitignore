@@ -1,9 +1,9 @@
 # v0.2 BPF build artifacts — host-kernel bound, never committed.
 # R-CLI1 reproducibility comes from the Makefile rule that regenerates
 # these, not from the bytes on disk.
-edr/EDR/internal/bpf/probes/vmlinux.h
-edr/EDR/internal/bpf/probes/*.bpf.o
-edr/EDR/internal/bpf/probes/*.bpf.linked.o
+internal/bpf/probes/vmlinux.h
+internal/bpf/probes/*.bpf.o
+internal/bpf/probes/*.bpf.linked.o
 
 # Go test coverage + gofumpt module cache
 *.test
@@ -11,29 +11,29 @@ edr/EDR/internal/bpf/probes/*.bpf.linked.o
 coverage.txt
 
 # Local scratch
-edr/EDR/var/
+var/
 *.swp
 .DS_Store
 
 # Go toolchain (host-specific, not project code)
-edr/EDR/.tools/
+.tools/
 
 # Compiled binaries
-edr/EDR/edr-agent
-edr/EDR/edrctl
-edr/EDR/edr-enforcer
-edr/EDR/edr-orchestrator
-edr/EDR/edr-sensor
-edr/EDR/edr-supervisor
+edr-agent
+edrctl
+edr-enforcer
+edr-orchestrator
+edr-sensor
+edr-supervisor
 
 # BPF probes source directory c/ (intermediate build artifacts)
-edr/EDR/internal/bpf/c/
+internal/bpf/c/
 
 # Runtime generated policy version backups
-edr/EDR/configs/.versions/
+configs/.versions/
 
 # Go test temp directories
-edr/EDR/internal/control/tmp/
+internal/control/tmp/
 
 # Development prompt / session transcript files
 EDR_prompt*.txt
@@ -44,9 +44,19 @@ readme-edr.md
 .errcheck
 
 # Go build/package cache
-edr/EDR/.cache/
-edr/EDR/dist/
+.cache/
+dist/
 
 # IDE / tool config
 .claude/
 .serena/
+
+# Unwanted audit files
+audit/DEV_IRON_RULES.md
+audit/SECURITY_AUDIT.md
+audit/audit-report.md
+audit/milestone-m3.md
+audit/milestone-v015.md
+audit/test-flow-v015.md
+audit/verify-m3-report.json
+audit/v0.6-decision-record.md
