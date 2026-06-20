@@ -1,0 +1,44 @@
+[Unit]
+Description=EDR Agent (exercise deployment)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/edr
+ExecStart=/opt/edr/edr-agent --config /etc/edr/agent.json
+ExecReload=/opt/edr/edrctl --socket /var/lib/edr/edr-agent.sock policy reload
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+LockPersonality=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# Resource limits
+CPUQuota=15%
+MemoryMax=256M
+LimitCORE=0
+LimitNOFILE=65536
+
+# Minimal capability set
+CapabilityBoundingSet=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_SETUID CAP_SETGID CAP_DAC_READ_SEARCH CAP_SYS_ADMIN CAP_BPF
+AmbientCapabilities=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_SYS_ADMIN CAP_BPF
+
+# Read/write paths
+ReadWritePaths=/var/lib/edr /var/log/edr /opt/edr/var
+ReadOnlyPaths=/etc/edr /opt/edr/probes
+
+[Install]
+WantedBy=multi-user.target

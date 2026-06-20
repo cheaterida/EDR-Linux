@@ -1,0 +1,47 @@
+[Unit]
+Description=EDR Orchestrator (%i)
+After=edr-sensor@%i.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/edr
+Environment=EDR_INSTANCE_ID=%i
+RuntimeDirectory=edr
+RuntimeDirectoryMode=0755
+ExecStart=/opt/edr/edr-orchestrator --config /etc/edr/%i/orchestrator.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+LockPersonality=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+ReadWritePaths=/var/lib/edr /var/log/edr /opt/edr/var /run/edr
+UMask=0077
+CapabilityBoundingSet=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CPUQuota=50%
+MemoryMax=512M
+LimitCORE=0
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,90 @@
+{
+  "policy_path": "/etc/edr/policy.json",
+  "baseline_path": "/etc/edr/baseline.json",
+  "event_path": "/var/log/edr/events.jsonl",
+  "response_path": "/var/log/edr/responses.jsonl",
+  "artifact_dir": "/var/lib/edr/forensics",
+  "socket_path": "/var/run/edr-agent.sock",
+  "interval_sec": 2,
+  "syslog": false,
+  "dry_run": false,
+  "allowed_uids": [0],
+  "retention": {
+    "max_bytes": 52428800,
+    "max_backups": 10
+  },
+  "file_watch": {
+    "mode": "inotify",
+    "paths": [
+      "/etc",
+      "/tmp",
+      "/var/tmp",
+      "/dev/shm",
+      "/var/spool/cron",
+      "/usr/local/bin",
+      "/opt",
+      "/home",
+      "/root"
+    ]
+  },
+  "nft": {
+    "enabled": true,
+    "dry_run": false,
+    "table": "edr",
+    "chain": "blocklist"
+  },
+  "integrity": {
+    "enable_chain": true,
+    "key_path": "/var/lib/edr/log.key",
+    "state_path": "/var/lib/edr/events.jsonl.state",
+    "algorithm": "sha256"
+  },
+  "suppression": {
+    "process_cooldown_sec": 10,
+    "file_cooldown_sec": 15,
+    "network_cooldown_sec": 10,
+    "rate_per_sec": 20,
+    "burst": 20,
+    "state_path": "/var/lib/edr/suppressor.json"
+  },
+  "anchor": {
+    "enabled": true,
+    "url": "http://192.168.214.1:9090/anchor",
+    "file_path": "/var/lib/edr/anchor.json",
+    "interval_sec": 60
+  },
+  "bpf": {
+    "enabled": true,
+    "obj_dir": "/opt/edr/probes",
+    "ringbuf_pages": 256
+  },
+  "fanotify": {
+    "enabled": true,
+    "paths": [
+      "/etc",
+      "/tmp",
+      "/var/tmp",
+      "/dev/shm",
+      "/var/spool/cron",
+      "/usr/local/bin",
+      "/opt/edr",
+      "/etc/edr",
+      "/root",
+      "/home"
+    ]
+  },
+  "signing_key_path": "/var/lib/edr/signing.key.pub",
+  "rootkit_detection": {
+    "enabled": true,
+    "interval_sec": 15,
+    "monitor_only": false
+  },
+  "webhooks": [
+    {
+      "url": "http://192.168.214.1:9090/webhook",
+      "format": "generic",
+      "min_severity": "medium",
+      "shared_secret": "secret"
+    }
+  ]
+}

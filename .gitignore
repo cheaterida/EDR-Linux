@@ -1,9 +1,9 @@
 # v0.2 BPF build artifacts — host-kernel bound, never committed.
 # R-CLI1 reproducibility comes from the Makefile rule that regenerates
 # these, not from the bytes on disk.
-internal/bpf/probes/vmlinux.h
-internal/bpf/probes/*.bpf.o
-internal/bpf/probes/*.bpf.linked.o
+edr/EDR/internal/bpf/probes/vmlinux.h
+edr/EDR/internal/bpf/probes/*.bpf.o
+edr/EDR/internal/bpf/probes/*.bpf.linked.o
 
 # Go test coverage + gofumpt module cache
 *.test
@@ -11,25 +11,29 @@ internal/bpf/probes/*.bpf.linked.o
 coverage.txt
 
 # Local scratch
-var/
+edr/EDR/var/
 *.swp
 .DS_Store
 
 # Go toolchain (host-specific, not project code)
-.tools/
+edr/EDR/.tools/
 
 # Compiled binaries
-edr-agent
-edrctl
+edr/EDR/edr-agent
+edr/EDR/edrctl
+edr/EDR/edr-enforcer
+edr/EDR/edr-orchestrator
+edr/EDR/edr-sensor
+edr/EDR/edr-supervisor
 
 # BPF probes source directory c/ (intermediate build artifacts)
-internal/bpf/c/
+edr/EDR/internal/bpf/c/
 
 # Runtime generated policy version backups
-configs/.versions/
+edr/EDR/configs/.versions/
 
 # Go test temp directories
-internal/control/tmp/
+edr/EDR/internal/control/tmp/
 
 # Development prompt / session transcript files
 EDR_prompt*.txt
@@ -38,3 +42,11 @@ readme-edr.md
 
 # errcheck linter config
 .errcheck
+
+# Go build/package cache
+edr/EDR/.cache/
+edr/EDR/dist/
+
+# IDE / tool config
+.claude/
+.serena/
