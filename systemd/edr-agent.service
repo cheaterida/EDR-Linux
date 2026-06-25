@@ -10,7 +10,15 @@ User=root
 Group=root
 WorkingDirectory=/opt/edr
 ExecStart=/opt/edr/edr-agent --config /etc/edr/agent.json
-ExecReload=/opt/edr/edrctl --socket /opt/edr/var/run/edr-agent.sock policy reload
+ExecReload=/opt/edr/edrctl --socket /run/edr-agent.sock policy reload
+# KillMode=none: systemd MUST NOT send signals to the agent process.
+# Combined with BPF selfprotect (which intercepts __x64_sys_kill),
+# this ensures the only way to stop the agent is through the admin
+# token API (POST /v0/shutdown with X-EDR-Admin-Token).
+ExecStop=/bin/true
+KillMode=none
+SendSIGKILL=no
+TimeoutStopSec=1
 Restart=on-failure
 RestartSec=3
 
@@ -64,7 +72,7 @@ AmbientCapabilities=CAP_KILL CAP_DAC_OVERRIDE CAP_NET_ADMIN CAP_SYS_ADMIN CAP_BP
 # Go runtime syscalls through while blocking raw socket creation,
 # kexec_load, init_module, and similar dangerous calls. EPERM is
 # returned for blocked calls so Go's runtime does not panic.
-SystemCallFilter=@system-service
+SystemCallFilter=@system-service @privileged bpf perf_event_open fanotify_init fanotify_mark
 SystemCallErrorNumber=EPERM
 
 # Resource limits — v0.6 exercise hardening

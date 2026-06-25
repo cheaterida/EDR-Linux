@@ -23,6 +23,7 @@ import (
 	"edr/internal/metrics"
 	"edr/internal/policy"
 	"edr/internal/response"
+	"edr/internal/adminauth"
 	"edr/internal/transport"
 )
 
@@ -35,8 +36,10 @@ type ServerOptions struct {
 	IntegrityKey           []byte
 	IngestKey              []byte
 	SigningKeyPath         string
+	AdminKey               []byte
 	Anchor                 *eventlog.Anchor
 	Shutdown               func()
+	Restart                 func()
 	WebhookTestFn          func() error
 	MetricsWriter          func(io.Writer)
 	HAStatus               func() (any, error)
@@ -360,6 +363,20 @@ func NewServerWithOptions(agent *Agent, opts ServerOptions) http.Handler {
 		if !requireAuthorized(w, r, opts.AllowedUIDs) {
 			return
 		}
+		// Single event lookup: GET /v0/events?event_id=xxx
+		if eid := r.URL.Query().Get("event_id"); eid != "" {
+			result, err := queryEvents(opts.EventPath, eventQuery{EventID: eid, Limit: 1})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if len(result.Events) == 0 {
+				http.Error(w, "event not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, result.Events[0])
+			return
+		}
 		result, err := queryEvents(opts.EventPath, eventQueryFromRequest(r))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -486,6 +503,18 @@ func NewServerWithOptions(agent *Agent, opts ServerOptions) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		// Admin token bypasses all other credential checks
+		if adminAuthOK(r, opts.AdminKey, "shutdown") {
+			if opts.Shutdown == nil {
+				http.Error(w, "shutdown handler is not configured", http.StatusServiceUnavailable)
+				return
+			}
+			auditShutdown(agent, peerCred{}, 0, "allow", "admin-authorized shutdown")
+			writeJSON(w, map[string]any{"ok": true, "shutdown": "scheduled"})
+			opts.Shutdown()
+			return
+		}
+		// Normal path: require shutdown_enabled + root loginuid
 		cred, loginUID, credErr := shutdownCredential(r)
 		if credErr != nil {
 			auditShutdown(agent, cred, loginUID, "deny", credErr.Error())
@@ -514,6 +543,54 @@ func NewServerWithOptions(agent *Agent, opts ServerOptions) http.Handler {
 		auditShutdown(agent, cred, loginUID, "allow", "root login shutdown accepted")
 		writeJSON(w, map[string]any{"ok": true, "shutdown": "scheduled"})
 		opts.Shutdown()
+	})
+
+	// Admin API endpoints (require admin token)
+	mux.HandleFunc("/v0/admin/restart", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !requireAdminAuth(w, r, opts.AdminKey, "restart") {
+			return
+		}
+		if opts.Restart == nil {
+			http.Error(w, "restart handler is not configured", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "restart": "scheduled"})
+		opts.Restart()
+	})
+
+	mux.HandleFunc("/v0/admin/token", func(w http.ResponseWriter, r *http.Request) {
+		if !requireAuthorized(w, r, opts.AllowedUIDs) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Action string `json:"action"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&req); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(opts.AdminKey) < 16 {
+			http.Error(w, "admin key not configured", http.StatusServiceUnavailable)
+			return
+		}
+		token, expiresAt, err := adminauth.IssueToken(opts.AdminKey, req.Action, time.Now())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"ok":         true,
+			"token":      token,
+			"expires_at": expiresAt,
+		})
 	})
 
 	// Process freeze/resume
@@ -891,8 +968,10 @@ type eventQuery struct {
 	Category       string
 	Severity       string
 	RuleID         string
+	EventID        string
 	Host           string
 	Decision       string
+	SubjectPID     string
 	FilePath       string
 	FileOp         string
 	SubjectName    string
@@ -944,8 +1023,10 @@ func eventQueryFromRequest(r *http.Request) eventQuery {
 		Category:       r.URL.Query().Get("category"),
 		Severity:       r.URL.Query().Get("severity"),
 		RuleID:         r.URL.Query().Get("rule_id"),
+		EventID:        r.URL.Query().Get("event_id"),
 		Host:           r.URL.Query().Get("host"),
 		Decision:       r.URL.Query().Get("decision"),
+		SubjectPID:     r.URL.Query().Get("subject_pid"),
 		FilePath:       r.URL.Query().Get("file_path"),
 		FileOp:         r.URL.Query().Get("file_op"),
 		SubjectName:    r.URL.Query().Get("subject_name"),
@@ -993,6 +1074,9 @@ func queryEvents(path string, q eventQuery) (eventQueryResult, error) {
 		if q.RuleID != "" && event["rule_id"] != q.RuleID {
 			continue
 		}
+		if q.EventID != "" && event["event_id"] != q.EventID {
+			continue
+		}
 		if q.Host != "" && event["host"] != q.Host {
 			continue
 		}
@@ -1004,6 +1088,16 @@ func queryEvents(path string, q eventQuery) (eventQueryResult, error) {
 		}
 		if !eventMatchesSubject(event, q.SubjectName, q.SubjectPath, q.SubjectCmdline) {
 			continue
+		}
+		if q.SubjectPID != "" {
+			subj, _ := event["subject"].(map[string]any)
+			if subj == nil {
+				continue
+			}
+			pidStr := fmt.Sprint(subj["pid"])
+			if pidStr != q.SubjectPID {
+				continue
+			}
 		}
 		if !eventInTimeRange(event, q.Since, q.Until) {
 			continue

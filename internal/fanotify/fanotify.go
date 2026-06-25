@@ -148,6 +148,12 @@ type Provider struct {
 	allowCount    uint64
 	denyCount     uint64
 
+	// Inode-based file identity for self-protection.
+	// Key: inode number (from syscall.Stat_t.Ino)
+	// Value: human-readable label for audit logging.
+	protectedInodes map[uint64]string
+	inodeMu         sync.RWMutex
+
 	stop chan struct{}
 	done chan struct{}
 }
@@ -277,6 +283,64 @@ func (p *Provider) markOne(path string) error {
 	return nil
 }
 
+// markFile adds a fanotify inode mark for a single file (not a
+// directory). Used for /proc/<pid>/mem and other specific files
+// that should not trigger subtree monitoring.
+func (p *Provider) markFile(path string) error {
+	pathPtr, err := syscall.BytePtrFromString(path)
+	if err != nil {
+		return err
+	}
+	_, _, errno := syscall.Syscall6(cnrFanotifyMark,
+		uintptr(p.fd),
+		uintptr(FAN_MARK_ADD),
+		uintptr(FAN_OPEN_PERM), // no FAN_EVENT_ON_CHILD for files
+		catFdCwd,
+		uintptr(unsafe.Pointer(pathPtr)),
+		0,
+	)
+	if errno != 0 {
+		return fmt.Errorf("%v", errno)
+	}
+	return nil
+}
+
+// ProtectFile registers a file path for inode-based self-protection.
+// It stats the file to obtain its device+inode identity, caches the
+// inode, and adds a fanotify mark so future open attempts generate
+// permission events. Returns an error if the file cannot be stat'd.
+// The description is used in audit log entries.
+func (p *Provider) ProtectFile(path, description string) error {
+	var st syscall.Stat_t
+	if err := syscall.Stat(path, &st); err != nil {
+		return fmt.Errorf("protect %s: %w", path, err)
+	}
+	p.inodeMu.Lock()
+	if p.protectedInodes == nil {
+		p.protectedInodes = make(map[uint64]string)
+	}
+	p.protectedInodes[st.Ino] = description
+	p.inodeMu.Unlock()
+
+	return p.markFile(path)
+}
+
+// isProtectedInode checks whether the given file descriptor belongs
+// to a protected file. Returns true and the description if protected.
+func (p *Provider) isProtectedInode(fd int32) (bool, string) {
+	if fd < 0 || fd == FAN_NOFD {
+		return false, ""
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(int(fd), &st); err != nil {
+		return false, ""
+	}
+	p.inodeMu.RLock()
+	desc, ok := p.protectedInodes[st.Ino]
+	p.inodeMu.RUnlock()
+	return ok, desc
+}
+
 func (p *Provider) loop() {
 	defer close(p.done)
 
@@ -354,12 +418,44 @@ func (p *Provider) handleEvent(meta fanotifyEventMetadata) {
 	isPerm := meta.Mask&(FAN_OPEN_PERM|FAN_ACCESS_PERM) != 0
 
 	if isPerm {
+		// Inode-based self-protection: check BEFORE reading /proc
+		// fields. If the target file's inode is in the protected set
+		// and the caller is not edr-agent/edrctl, deny immediately.
+		// This replaces path-string matching with inode identity,
+		// immune to symlink/bind-mount/rename bypasses.
+		if protected, desc := p.isProtectedInode(meta.Fd); protected {
+			exe := readProcLink(meta.Pid, "exe")
+			if exe != "/opt/edr/edr-agent" && exe != "/opt/edr/edrctl" {
+				atomic.AddUint64(&p.denyCount, 1)
+				_ = writeResponse(p.fd, fanotifyResponse{Fd: meta.Fd, Response: FAN_DENY})
+				if meta.Fd != FAN_NOFD {
+					syscall.Close(int(meta.Fd))
+				}
+				p.emitAudit(meta, path, false, "SELF-INODE-"+desc)
+				return
+			}
+			// edr-agent/edrctl: allow immediately without policy evaluation
+			_ = writeResponse(p.fd, fanotifyResponse{Fd: meta.Fd, Response: FAN_ALLOW})
+			if meta.Fd != FAN_NOFD {
+				syscall.Close(int(meta.Fd))
+			}
+			atomic.AddUint64(&p.allowCount, 1)
+			return
+		}
+
 		// Fast-path: read only comm first to check critical process
 		// list. Avoids 3 unnecessary /proc reads (status, exe, cmdline)
 		// for sshd, systemd, and other whitelisted daemons.
 		comm := readProcString(meta.Pid, "comm")
 		exe := readProcLink(meta.Pid, "exe")
-		if shouldBypassPermissionCheck(comm, exe, path) {
+
+		// Shell bypass is only permitted for interactive shells with
+		// a controlling TTY (real admin SSH login). Non-TTY shells
+		// (reverse shell, web RCE, curl|bash, cron job) must go
+		// through full policy evaluation and can be blocked.
+		if isShell(comm) && !hasTTY(meta.Pid) {
+			// Fall through to policy evaluation below.
+		} else if shouldBypassPermissionCheck(comm, exe, path) {
 			_ = writeResponse(p.fd, fanotifyResponse{Fd: meta.Fd, Response: FAN_ALLOW})
 			if meta.Fd != FAN_NOFD {
 				syscall.Close(int(meta.Fd))
@@ -544,6 +640,13 @@ func readProcUID(pid int32) uint32 {
 }
 
 func shouldBypassPermissionCheck(comm, exe, path string) bool {
+	// v0.16: Security-sensitive paths are NEVER bypassed —
+	// not even for bash/sshd. This closes the "attacker uses
+	// bash shell to write webshells, SSH backdoors, or tamper
+	// with WAF config" attack vector.
+	if isSecuritySensitivePath(path) {
+		return false
+	}
 	if isCriticalPath(path) {
 		return true
 	}
@@ -554,6 +657,20 @@ func shouldBypassPermissionCheck(comm, exe, path string) bool {
 // must never be blocked by fanotify. Blocking sshd, systemd, or PAM
 // helpers will break SSH and system management.
 func isCriticalProcessForPath(comm, exe, path string) bool {
+	// Security-sensitive paths: NEVER bypass policy, even for bash/sshd.
+	if isSecuritySensitivePath(path) {
+		return false
+	}
+
+	// EDR self-protection: /opt/edr/ and /etc/edr/ are only writable
+	// by edr-agent and edrctl — even root's bash shell is blocked.
+	// This check runs BEFORE the critical process list, so bash/sh
+	// cannot bypass it. The credential to access these paths is to
+	// be the edr-agent or edrctl process itself.
+	if strings.HasPrefix(path, "/opt/edr/") || strings.HasPrefix(path, "/etc/edr/") {
+		return exe == "/opt/edr/edr-agent" || exe == "/opt/edr/edrctl"
+	}
+
 	switch comm {
 	case "sshd", "ssh", "systemd", "systemd-logind", "systemd-journal",
 		"systemd-udevd", "dbus-daemon", "login", "agetty",
@@ -564,9 +681,6 @@ func isCriticalProcessForPath(comm, exe, path string) bool {
 		"systemctl", "journalctl", "update-grub", "grub-mkconfig",
 		"dpkg", "apt", "apt-get", "python3":
 		return true
-	}
-	if strings.HasPrefix(path, "/opt/edr/") || strings.HasPrefix(path, "/etc/edr/") {
-		return exe == "/opt/edr/edr-agent" || exe == "/opt/edr/edrctl"
 	}
 	return false
 }
@@ -612,10 +726,57 @@ var criticalPathPrefixes = []string{
 	"/etc/default/",
 }
 
+// isSecuritySensitivePath returns true for paths that must NEVER bypass
+// fanotify policy evaluation — not even for critical processes like bash
+// or sshd. These are the paths attackers target: webshell deployment,
+// SSH backdoor injection, WAF config tampering, BPF/kprobe disabling.
+//
+// v0.16: This closes the attack vector where an attacker who gets a bash
+// shell (via ShopPulse RCE) can write to /var/www/edgeops/ or
+// /root/.ssh/ without being blocked by fanotify policy rules.
+func isSecuritySensitivePath(path string) bool {
+	for _, prefix := range securitySensitivePaths {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+var securitySensitivePaths = []string{
+	"/sys/kernel/debug/kprobes", // kprobe global disable
+	"/var/www/edgeops/",         // webshell deployment
+	"/opt/edgeops/lib/",         // trojan JAR deployment
+	"/root/waf-proxy/",          // WAF config tampering
+	"/etc/nginx/",               // nginx config hijack
+	"/etc/ssh/sshd_config",      // SSH config tampering
+}
+
 func readProcCmdline(pid int32) string {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
 		return ""
 	}
 	return strings.ReplaceAll(strings.TrimRight(string(data), "\x00"), "\x00", " ")
+}
+
+// isShell returns true if comm is a Unix shell process name.
+func isShell(comm string) bool {
+	switch comm {
+	case "bash", "sh", "dash", "zsh", "rbash", "ksh", "csh", "tcsh":
+		return true
+	}
+	return false
+}
+
+// hasTTY checks whether the process has a controlling terminal by
+// reading /proc/<pid>/fd/0. Returns true if fd 0 is a TTY device
+// (/dev/pts/* or /dev/tty*), indicating an interactive session.
+func hasTTY(pid int32) bool {
+	target, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/0", pid))
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(target, "/dev/pts/") ||
+		strings.HasPrefix(target, "/dev/tty")
 }

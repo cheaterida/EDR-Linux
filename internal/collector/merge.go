@@ -55,6 +55,10 @@ type MergedCollector struct {
 	// v0.7 rootkit: PIDs observed by BPF events over time. Used for
 	// /proc vs BPF cross-source hidden process detection.
 	seenPIDs map[int]time.Time
+
+	// v0.8 rootkit: remote addresses observed by BPF connect events.
+	// Used for ConnTracker vs /proc/net/tcp hidden connection detection.
+	seenAddrs map[string]time.Time
 }
 
 // NewMergedCollector wires the two sources. b may be nil, in
@@ -62,10 +66,11 @@ type MergedCollector struct {
 // collector alone and BPFHealth().Attached stays false.
 func NewMergedCollector(procfs *ProcfsCollector, b bpf.Loader) *MergedCollector {
 	return &MergedCollector{
-		procfs:   procfs,
-		bpf:      b,
-		health:   BPFHealth{Attached: b != nil},
-		seenPIDs: map[int]time.Time{},
+		procfs:    procfs,
+		bpf:       b,
+		health:    BPFHealth{Attached: b != nil},
+		seenPIDs:  map[int]time.Time{},
+		seenAddrs: map[string]time.Time{},
 	}
 }
 
@@ -250,6 +255,27 @@ func (m *MergedCollector) applyConnect(snap *Snapshot, e bpf.Event) {
 		RemoteAddr: e.DAddr,
 		RemotePort: int(e.DPort),
 	})
+	// Track BPF-seen remote address for rootkit network hiding detection.
+	if e.DAddr != "" {
+		m.mu.Lock()
+		if m.seenAddrs == nil {
+			m.seenAddrs = map[string]time.Time{}
+		}
+		m.seenAddrs[e.DAddr] = time.Now().UTC()
+		m.mu.Unlock()
+	}
+}
+
+// SeenAddrs returns a snapshot of remote addresses observed by BPF
+// connect events. Used for /proc/net/tcp cross-source comparison.
+func (m *MergedCollector) SeenAddrs() map[string]time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]time.Time, len(m.seenAddrs))
+	for k, v := range m.seenAddrs {
+		out[k] = v
+	}
+	return out
 }
 
 func (m *MergedCollector) markLoaderClosed() {

@@ -75,6 +75,12 @@ func (d *Detector) RunOnce() ([]Finding, error) {
 	if hm, err := d.DetectHiddenModules(); err == nil {
 		findings = append(findings, hm...)
 	}
+	if hc, err := d.DetectHiddenConnections(); err == nil {
+		findings = append(findings, hc...)
+	}
+	if si, err := d.CheckSyscallIntegrity(); err == nil {
+		findings = append(findings, si...)
+	}
 
 	d.checks++
 	d.findings += uint64(len(findings))
@@ -287,4 +293,185 @@ func Summarize(findings []Finding) string {
 		parts = append(parts, fmt.Sprintf("%s=%d", t, n))
 	}
 	return strings.Join(parts, " ")
+}
+
+// DetectHiddenConnections compares BPF-observed remote addresses
+// (via MergedCollector.SeenAddrs) with /proc/net/tcp. A remote
+// address seen by BPF but absent from /proc/net/tcp indicates a
+// rootkit is hooking /proc/net/tcp to hide connections.
+func (d *Detector) DetectHiddenConnections() ([]Finding, error) {
+	if d.Collector == nil {
+		return nil, nil
+	}
+	seen := d.Collector.SeenAddrs()
+	if len(seen) == 0 {
+		return nil, nil
+	}
+
+	procAddrs, err := readProcNetAddrs(d.ProcRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	cutoff := time.Now().UTC().Add(-d.Grace)
+	var findings []Finding
+	for addr, lastSeen := range seen {
+		if lastSeen.Before(cutoff) {
+			continue
+		}
+		if procAddrs[addr] {
+			continue
+		}
+		findings = append(findings, Finding{
+			Type:     "hidden_connection",
+			Severity: "high",
+			RuleID:   "ROOTKIT-006",
+			Action:   "network_isolate",
+			Object: map[string]any{
+				"remote_addr": addr,
+				"last_seen":   lastSeen.Format(time.RFC3339Nano),
+				"signal_set":  "bpf_seen_missing_from_proc_net_tcp",
+			},
+		})
+	}
+	return findings, nil
+}
+
+// readProcNetAddrs returns the set of remote addresses currently
+// visible in /proc/net/tcp and /proc/net/tcp6.
+func readProcNetAddrs(procRoot string) (map[string]bool, error) {
+	out := make(map[string]bool)
+	for _, name := range []string{"tcp", "tcp6"} {
+		path := filepath.Join(procRoot, "net", name)
+		f, err := os.Open(path)
+		if err != nil {
+			continue // tcp6 may not exist
+		}
+		sc := bufio.NewScanner(f)
+		first := true
+		for sc.Scan() {
+			if first {
+				first = false
+				continue // skip header
+			}
+			fields := strings.Fields(sc.Text())
+			if len(fields) < 10 {
+				continue
+			}
+			// Format: sl local_address rem_address st ...
+			// local_address = hexIP:hexPort, rem_address same format
+			local := fields[1]
+			remote := fields[2]
+			// Extract addresses (strip port after last ':')
+			if idx := strings.LastIndex(local, ":"); idx > 0 {
+				out[hexToIP(local[:idx])] = true
+			}
+			if idx := strings.LastIndex(remote, ":"); idx > 0 {
+				out[hexToIP(remote[:idx])] = true
+			}
+		}
+		f.Close()
+		if err := sc.Err(); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// hexToIP converts a hex-encoded IPv4 address (from /proc/net/tcp)
+// to dotted-quad notation. Returns the original string if parsing fails.
+func hexToIP(hex string) string {
+	if len(hex) != 8 {
+		return hex
+	}
+	// /proc/net/tcp stores address in little-endian hex
+	b := make([]byte, 4)
+	for i := 0; i < 4; i++ {
+		v, err := strconv.ParseUint(hex[i*2:i*2+2], 16, 8)
+		if err != nil {
+			return hex
+		}
+		b[3-i] = byte(v) // little-endian → network byte order
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3])
+}
+
+// CheckSyscallIntegrity reads /proc/kallsyms and verifies that key
+// syscall function addresses fall within the kernel .text segment.
+// Addresses outside _text.._etext indicate syscall table hooking
+// or a compromised kallsyms output.
+func (d *Detector) CheckSyscallIntegrity() ([]Finding, error) {
+	kallsyms, err := os.ReadFile(filepath.Join(d.ProcRoot, "kallsyms"))
+	if err != nil {
+		return nil, err
+	}
+
+	var textStart, textEnd uint64
+	syscallAddrs := map[string]uint64{}
+
+	lines := strings.Split(string(kallsyms), "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		addr, err := strconv.ParseUint(fields[0], 16, 64)
+		if err != nil {
+			continue
+		}
+		// Type T = text (global), t = text (local)
+		if fields[1] != "T" && fields[1] != "t" {
+			continue
+		}
+		name := fields[2]
+
+		switch name {
+		case "_text":
+			textStart = addr
+		case "_etext":
+			textEnd = addr
+		case "__x64_sys_kill", "__x64_sys_ptrace",
+			"__x64_sys_init_module", "__x64_sys_delete_module",
+			"__x64_sys_openat", "__x64_sys_getdents64",
+			"__x64_sys_process_vm_writev", "__x64_sys_bpf":
+			syscallAddrs[name] = addr
+		}
+	}
+
+	var findings []Finding
+	if textStart == 0 || textEnd == 0 {
+		findings = append(findings, Finding{
+			Type:     "syscall_table_unverifiable",
+			Severity: "high",
+			RuleID:   "ROOTKIT-007",
+			Action:   "observe",
+			Object: map[string]any{
+				"reason":     "kernel .text boundaries not found in kallsyms",
+				"text_start": textStart,
+				"text_end":   textEnd,
+			},
+		})
+		return findings, nil
+	}
+
+	for name, addr := range syscallAddrs {
+		if addr == 0 {
+			continue // syscall not found (e.g. CONFIG option disabled)
+		}
+		if addr < textStart || addr > textEnd {
+			findings = append(findings, Finding{
+				Type:     "syscall_hooked",
+				Severity: "critical",
+				RuleID:   "ROOTKIT-007",
+				Action:   "network_isolate",
+				Object: map[string]any{
+					"syscall":    name,
+					"address":    fmt.Sprintf("0x%x", addr),
+					"text_start": fmt.Sprintf("0x%x", textStart),
+					"text_end":   fmt.Sprintf("0x%x", textEnd),
+				},
+			})
+		}
+	}
+	return findings, nil
 }

@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-本项目是一个面向 Ubuntu 22.04 的内网实战 Linux EDR。当前版本 **v0.7.6**，处于 `v0.7` 收尾阶段：在 rootkit 检测与运维审计可用性基础上，补齐完整部署链路、split A/B HA、remote supervisor、本地控制面鉴权和 root session 降噪。
+本项目是一个面向 Ubuntu 22.04 的内网实战 Linux EDR。当前版本 **v0.8.0**，在 v0.7.6 稳固基础上推进安全强化：管理认证（admin token）、策略硬化（50+ 规则 alert→block）、CLI 研判工作台（investigate/pstree/audit）、自保护加固（process_vm_writev 阻断、inode 识别、bash TTY 分流、双守护进程、module kprobe 阻断、网络隐藏/Syscall 完整性检测）。
 
 **版本历史**：
 - `v0.1`：基础 ring3 闭环（采集 / 策略 / 响应 / 控制面 / 取证 / 基础安全加固）
@@ -12,13 +12,11 @@
 - `v0.16`：远端日志锚定 + Ed25519 策略签名 + MemoryDenyWriteExecute
 - `v0.4+`：反攻击检测（ptrace/LD_PRELOAD/插桩）+ 自保护 enforce + 受控停机边界 + 二进制加固
 - `v0.4++`：蓝队+红队联合安全审计 22 项修复（两阶段评估、pidfd、filename 黑名单、链状态恢复、panic 防护等）
-- **`v0.5`**：内网实战增强 — 57+ 检测规则、5 种新响应（quarantine/kill_tree/network_isolate/process_suspend/webhook_alert）、Prometheus 指标、Webhook/Email/Syslog 告警、Web 仪表盘、ConnTracker
-- **`v0.6`**：演习场景适配 — 89 规则、资源控制（CPU≤15%/Mem≤256M）、LSM 自保护主路径、业务连续性保护、持久化全覆盖（+13 规则）、nftables 快照回滚、提权检测 BPF 探针、进程树追踪 API、多机日志集中、CapEff 富化
-- **`v0.7`**：双轨推进 — 轨道 A：**rootkit 检测补强**（LKM/eBPF 操作监控 + /proc vs BPF 跨源校验）；轨道 B：运维审计可用性 — 移除 Web 仪表盘（降低攻击面）、edrctl report generate 赛后自动报告、同源事件自动归并（Merger）、事件查询 host/decision/filter 过滤、edrctl 表格化输出（--json flag）
-- **`v0.7.6`**：protection-path closure — 完成 `ATT002` ring0 fast-path 斩杀闭环、修复 split/full-stack 离线替换稳定性、将 `SELF001` 收窄到真正的 agent 二进制保护范围
-- **`v0.7.5`**：protection-path remediation — 修复 `LD_PRELOAD` fast-path kill 身份竞态、去掉错误的 pidfd 二次身份比对、收紧 fanotify 对 `/opt/edr` 与 `/etc/edr` 的自保护白名单，恢复真实强保护测试路径
-- **`v0.7.4`**：full-stack deploy hardening — full-stack 打包强制现编 `-tags bpf` 的 `edr-agent/edrctl`；修复空 `vmlinux.h` 风险；放通完整远端整包部署链
-- **`v0.7.3`**：HA / supervisor 收尾 — 恢复本地 Unix socket `SO_PEERCRED` 控制面鉴权；完成 `sensor -> orchestrator` batch push 双侧验证；root session 系统进程分类降噪；remote supervisor 旧状态迁移去重；完成 `peer down -> lease -> restart -> release` 实机演练
+- **`v0.5`**：内网实战增强 — 57+ 检测规则、5 种新响应、Prometheus 指标、Webhook/Email/Syslog 告警、Web 仪表盘、ConnTracker
+- **`v0.6`**：演习场景适配 — 89 规则、资源控制、LSM 自保护主路径、业务连续性、持久化全覆盖、nftables 回滚、提权探针、进程树 API、多机日志集中、CapEff 富化
+- **`v0.7`**：双轨推进 — rootkit 检测补强 + 运维审计可用性
+- **`v0.7.6`**：protection-path closure — ATT002 ring0 fast-path 斩杀闭环、split/full-stack 离线替换稳定性、SELF001 收紧
+- **`v0.8`**：security-hardening — admin token 加密管理、策略硬化、CLI 研判、自保护加固
 
 ## 1.1 v0.7.6 对应更新
 
@@ -738,3 +736,166 @@ sudo /home/lcz/edr_test/verify_shutdown_boundary.sh
 | 日志行丢失检测 | bufio.ErrTooLong + ghostEvents 计数 | v0.4++ |
 | 资源泄露修复 | ProcfsCollector.Close() 释放 inotify fd | v0.4++ |
 | 文件权限收紧 | suppressor state 0600 | v0.4++ |
+
+## 12. v0.8 安全强化
+
+在 v0.7.6 稳固基础上，本轮（v0.8）聚焦四个方向：
+1. **管理认证**：加密令牌保护停机/重启/配置变更等高级操作
+2. **策略硬化**：50+ 规则从 alert 升级 block + rootkit 规则全面启用
+3. **CLI 研判工作台**：`edrctl investigate`、`edrctl pstree`、SIEM 导出
+4. **自保护加固**：sys_process_vm_writev 阻断、inode 文件识别、bash TTY 分流、双守护、module kprobe 阻断
+
+### 12.1 管理认证：加密令牌 (Admin Token)
+
+Root 凭据不再是停机的充分条件——必须持有预共享的 HMAC-SHA256 令牌。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `POST /v0/admin/token` | admin token 签发 | 申请指定操作令牌（5 分钟有效） |
+| `POST /v0/admin/restart` | admin token 验证 | 令牌授权代理重启 |
+| `POST /v0/shutdown` | admin token 优先 | 令牌通过 → 直接停机；无令牌 → 走 root loginuid 校验 |
+
+**CLI 命令**：
+```bash
+edrctl admin gen-key              # 生成 hex 密钥
+edrctl admin token shutdown       # 申请停机令牌
+edrctl admin shutdown <TOKEN>     # 令牌授权停机
+edrctl admin restart <TOKEN>      # 令牌授权重启
+```
+
+**新增文件**：`internal/adminauth/adminauth.go` + `_test.go`
+
+### 12.2 策略硬化
+
+**规则升级**（`configs/policy.target.json`）：
+
+| 类别 | 变更 | 数量 |
+|------|------|:---:|
+| ROOTKIT | `enabled: false, decision: alert` → `true, block` | 5 |
+| 提权/SUID/setcap | `alert` → `block, kill` | 3 |
+| 凭证访问 (shadow/ssh-key) | `alert` → `block, fanotify_deny` | 2 |
+| 反弹 Shell/隧道工具 | `alert/time_window` → `block, kill` | 7 |
+| 持久化 (systemctl/crontab 命令) | `alert` → `block, kill` | 3 |
+| 反取证 (history/shred/truncate) | `alert` → `block, kill` | 4 |
+| 横向工具 (hashcat/john/nmap/masscan) | `alert` → `block, kill` | 4 |
+| 服务保护 (systemctl/iptables/nft/hosts/resolv) | `alert` → `block` | 10 |
+| Java RCE/SSTI 检测 | `alert` → `block, kill` | 5 |
+| SSRF 内网探测 | `alert` → `block, nft_block` | 2 |
+| BPF 自保 (bpftool/map tamper/prog detach) | `alert` → `block, kill` | 5 |
+| EDR 数据目录保护 (新增) | SELF005-007 | 3 |
+| Rootkit 网络隐藏/Syscall Hook (新增) | ROOTKIT-006-007 | 2 |
+
+**Agent 配置硬化**：
+- `rootkit_detection.monitor_only`: `true` → `false`（强制模式）
+- `fanotify.paths`: 新增 `/opt/edr`, `/etc/edr`, `/var/lib/edr`, `/var/log/edr`
+
+### 12.3 CLI 研判工作台
+
+**`edrctl investigate <event_id>`** — 五面板事件研判：
+1. **规则命中详情** — 匹配的规则、条件、进程信息、操作对象
+2. **进程行为时间线** — 该 PID 从创建到结束的全部事件
+3. **EDR 响应记录** — kill/quarantine/isolate 执行结果
+4. **网络连接** — 源/目的 IP + 端口 + 协议
+5. **文件操作** — 访问/修改的文件路径和规则
+
+**`edrctl pstree`** — 进程树可视化：
+```bash
+edrctl pstree                 # 紧凑树形
+edrctl pstree --detail        # 详细模式 (user/cmdline)
+edrctl pstree --filter=ssh    # 过滤关键字
+```
+
+**`edrctl audit`** — 审计导出：
+```bash
+edrctl audit export format=cef  # CEF 格式 (ArcSight/QRadar)
+edrctl audit export format=leef # LEEF 格式 (QRadar)
+edrctl audit integrity          # 完整性校验报告
+```
+
+**后端 API 扩展**：
+- `GET /v0/events?event_id=xxx` — 单条事件查询
+- `GET /v0/events?subject_pid=xxx` — 按 PID 过滤事件
+
+### 12.4 自保护加固
+
+#### 新增 BPF 探针 / kprobe 阻断
+
+| 防护目标 | 探针位置 | 机制 |
+|---------|---------|------|
+| `sys_process_vm_writev` | `selfprotect.bpf.c` (新增 handler) | kprobe 阻断 + bpf_send_signal 反杀 |
+| `sys_init_module` | `bpf_guard.bpf.c` (新增 handler) | kprobe 阻断 + 反杀（复用 bpf_guard_enabled 开关） |
+| `sys_delete_module` | `bpf_guard.bpf.c` (新增 handler) | kprobe 阻断 + 反杀 |
+| 网络 Ring0 阻断 | `connect.bpf.c` + `common.bpf.h` | `net_blacklist_ip/port` map → `bpf_send_signal(9)` |
+
+#### 信号处理细化
+
+| 信号 | 调用者 | 行为 |
+|:---:|------|------|
+| SIGKILL (9) | 任何人 | 阻断 + 反杀 |
+| SIGINT (2), SIGHUP (1), SIGQUIT (3) | 任何人 | 阻断 + 反杀 |
+| SIGTERM (15) | PID ≠ 1 | 阻断 + 反杀 |
+| SIGTERM (15) | PID = 1 (systemd) | 仅阻断，不杀 |
+
+#### Fanotify Inode 识别
+
+从路径字符串匹配升级为设备+inode 精确识别——免疫 symlink/bind-mount/rename 绕过。
+
+- `Provider.ProtectFile(path, desc)` — stat 文件 → 缓存 inode → 加 fanotify mark
+- `Provider.isProtectedInode(fd)` — fstat → 查 inode 集合
+- 受保护文件：`/opt/edr/edr-agent`, `/opt/edr/edrctl`, `/etc/edr`, `/var/lib/edr`, `/var/log/edr`, `/proc/<pid>/mem`
+
+#### Bash TTY 分流
+
+| 场景 | TTY | fanotify bypass？ |
+|------|:---:|:---:|
+| SSH 交互登录 | ✅ | ✅ 放行 |
+| 反弹 shell | ❌ | ❌ 策略评估 → 可阻断 |
+| Web RCE | ❌ | ❌ 策略评估 → 可阻断 |
+| curl\|bash payload | ❌ | ❌ 策略评估 → 可阻断 |
+
+实现：`fanotify.hasTTY(pid)` 检查 `/proc/<pid>/fd/0` 是否指向 TTY 设备。
+
+#### 双守护进程
+
+Agent 通过 `ForkExec` 启动轻量 guardian 子进程。双方通过 `/run/edr/agent.hb` 和 `guardian.hb` 互心跳：
+
+- Guardian 每 3s 检查 agent 心跳 → 超 15s → `syscall.Exec` 拉起 agent
+- Agent 每 10s 检查 guardian 心跳 → 超 20s → 重新 ForkExec
+- systemd `Restart=on-failure` 作为最终兜底
+
+#### Systemd 防 stop
+
+`KillMode=none` + `ExecStop=/bin/true` → `systemctl stop` 不产生任何信号，结合 BPF selfprotect 确保只有 admin token 路径能停机。
+
+### 12.5 Rootkit 检测扩展
+
+| 新增检测 | 规则 ID | 数据源 | 方法 |
+|---------|---------|--------|------|
+| 隐藏网络连接 | ROOTKIT-006 | BPF SeenAddrs vs /proc/net/tcp | 跨源地址对比 |
+| Syscall Table 完整性 | ROOTKIT-007 | /proc/kallsyms | .text 段边界校验 |
+
+**实现**：
+- `MergedCollector.SeenAddrs()` — 追踪 BPF connect 事件中的远程地址
+- `Detector.DetectHiddenConnections()` — BPF 观测地址 vs `/proc/net/tcp` 列表
+- `Detector.CheckSyscallIntegrity()` — 8 个关键 syscall 地址 vs `_text.._etext` 范围
+
+### 12.6 实现矩阵 (v0.8 新增)
+
+| 模块 | 文件 | 能力 |
+|------|------|------|
+| 管理认证 | `internal/adminauth/` | HMAC-SHA256 令牌签发/验证 |
+| CLI 研判 | `cmd/edrctl/main.go` | investigate / pstree / audit 命令 |
+| CLI 管理 | `cmd/edrctl/main.go` | admin gen-key/token/shutdown/restart |
+| 事件查询 | `internal/control/server.go` | event_id/subject_pid 过滤 |
+| SIEM 导出 | `cmd/edrctl/main.go` | CEF + LEEF 格式 |
+| process_vm_writev 阻断 | `internal/bpf/probes/selfprotect.bpf.c` | kprobe 反杀 |
+| module 操作阻断 | `internal/bpf/probes/bpf_guard.bpf.c` | kprobe 阻断 init/delete_module |
+| 网络 ring0 阻断 | `internal/bpf/probes/connect.bpf.c` | net_blacklist map + bpf_send_signal |
+| 信号处理细化 | `internal/bpf/probes/selfprotect.bpf.c` | should_kill_caller 逻辑 |
+| Inode 文件识别 | `internal/fanotify/fanotify.go` | ProtectFile / isProtectedInode |
+| Bash TTY 分流 | `internal/fanotify/fanotify.go` | isShell + hasTTY 检测 |
+| 双守护进程 | `cmd/edr-agent/main.go` | ForkExec guardian + 互心跳 |
+| Systemd 防 stop | `systemd/edr-agent.service` | KillMode=none + ExecStop=/bin/true |
+| 网络隐藏检测 | `internal/rootkit/detector.go` | SeenAddrs vs /proc/net/tcp |
+| Syscall 完整性 | `internal/rootkit/detector.go` | kallsyms .text 段校验 |
+| BPF Map 扩展 | `internal/bpf/probes/common.bpf.h` | net_blacklist_enabled/ip/port |

@@ -78,6 +78,9 @@ func (f *FakeLoader) FastEvents() <-chan Event { return f.fastOut }
 // SetAgentPID is a no-op stub for the FakeLoader.
 func (f *FakeLoader) SetAgentPID(pid uint32) error { return nil }
 
+// SetBpfGuard is a no-op stub for the FakeLoader.
+func (f *FakeLoader) SetBpfGuard(enabled bool) error { return nil }
+
 // BlacklistAdd is a no-op stub for the FakeLoader.
 func (f *FakeLoader) BlacklistAdd(comm string) error { return nil }
 
@@ -92,6 +95,21 @@ func (f *FakeLoader) BlacklistFilenameClear() error { return nil }
 
 // SetLDPreloadKill is a no-op stub for the FakeLoader.
 func (f *FakeLoader) SetLDPreloadKill(enabled bool) error { return nil }
+
+// SetNetBlacklistEnabled is a no-op stub for the FakeLoader.
+func (f *FakeLoader) SetNetBlacklistEnabled(enabled bool) error { return nil }
+
+// NetBlacklistIPAdd is a no-op stub for the FakeLoader.
+func (f *FakeLoader) NetBlacklistIPAdd(ip string) error { return nil }
+
+// NetBlacklistIPClear is a no-op stub for the FakeLoader.
+func (f *FakeLoader) NetBlacklistIPClear() error { return nil }
+
+// NetBlacklistPortAdd is a no-op stub for the FakeLoader.
+func (f *FakeLoader) NetBlacklistPortAdd(port uint16) error { return nil }
+
+// NetBlacklistPortClear is a no-op stub for the FakeLoader.
+func (f *FakeLoader) NetBlacklistPortClear() error { return nil }
 
 func (f *FakeLoader) SelfProtectStatus() SelfProtectStatus {
 	return SelfProtectStatus{}

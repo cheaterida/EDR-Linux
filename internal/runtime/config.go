@@ -62,6 +62,10 @@ type AnchorConfig struct {
 	Interval int    `json:"interval_sec"`
 }
 
+type AdminAuthConfig struct {
+	AdminKeyPath string `json:"admin_key_path"`
+}
+
 type FanotifyConfig struct {
 	Enabled bool     `json:"enabled"`
 	Paths   []string `json:"paths"`
@@ -176,6 +180,7 @@ type Config struct {
 	Fanotify          FanotifyConfig     `json:"fanotify"`
 	Anchor            AnchorConfig       `json:"anchor"`
 	SigningKeyPath    string             `json:"signing_key_path"`
+	AdminAuth         AdminAuthConfig    `json:"admin_auth"`
 	Quarantine        QuarantineConfig   `json:"quarantine"`
 	Webhooks          []WebhookConfig    `json:"webhooks"`
 	EmailAlerts       EmailAlertConfig   `json:"email_alerts"`
@@ -207,6 +212,7 @@ func DefaultConfig() Config {
 		Fanotify:          FanotifyConfig{Enabled: true, Paths: []string{"/etc", "/tmp", "/dev/shm", "/var/spool/cron", "/usr/local/bin", "/usr/bin", "/usr/sbin", "/root/.ssh", "/home", "/etc/systemd/system", "/etc/cron.d", "/etc/cron.daily"}},
 		Anchor:            AnchorConfig{Interval: 60},
 		SigningKeyPath:    "/var/lib/edr/signing.key",
+		AdminAuth:         AdminAuthConfig{AdminKeyPath: "/var/lib/edr/admin.key"},
 		Quarantine:        QuarantineConfig{Dir: "var/quarantine", DryRun: true},
 		EmailAlerts:       EmailAlertConfig{SMTPPort: 587, UseTLS: true, MinSeverity: "high"},
 		SyslogRemote:      SyslogRemoteConfig{Port: 514, Protocol: "udp", Facility: "daemon"},

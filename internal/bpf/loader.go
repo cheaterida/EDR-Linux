@@ -50,6 +50,14 @@ type MapFiller interface {
 	BlacklistFilenameAdd(path string) error
 	BlacklistFilenameClear() error
 	SetLDPreloadKill(enabled bool) error
+	SetBpfGuard(enabled bool) error // v0.16: toggle BPF_MAP_UPDATE_ELEM guard
+
+	// v0.8: network ring0 blocking maps
+	SetNetBlacklistEnabled(enabled bool) error
+	NetBlacklistIPAdd(ip string) error
+	NetBlacklistIPClear() error
+	NetBlacklistPortAdd(port uint16) error
+	NetBlacklistPortClear() error
 }
 
 // FastPathLoader is implemented by loaders that support a dedicated
@@ -80,6 +88,7 @@ type SelfProtectStatus struct {
 	KprobeTgkill bool
 	KprobePtrace bool
 	KprobePidfdSendSignal bool
+	BpfGuard     bool // v0.16: blocks BPF_MAP_UPDATE_ELEM from non-edr-agent
 }
 
 // SelfProtectReporter is implemented by loaders that can report

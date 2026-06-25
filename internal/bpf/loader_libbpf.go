@@ -51,12 +51,17 @@ struct edr_loader {
 	struct bpf_link     *module_finit_link;     // v0.7 rootkit
 	struct bpf_link     *module_delete_link;    // v0.7 rootkit
 	struct bpf_link     *bpf_op_link;           // v0.7 rootkit
+	struct bpf_link     *bpf_guard_link;        // v0.16 bpf map-write guard
 	struct ring_buffer  *rb;
 	int                  map_fd;
 	int                  agent_pid_fd;            // agent_pid ARRAY map fd
 	int                  blacklist_fd;            // blacklist_comm HASH map fd
 	int                  blacklist_filename_fd;   // blacklist_filename HASH map fd
 	int                  ldpreload_kill_fd;       // ldpreload_kill ARRAY map fd
+	int                  bpf_guard_enabled_fd;    // bpf_guard_enabled ARRAY map fd
+	int                  net_bl_enabled_fd;       // net_blacklist_enabled ARRAY map fd
+	int                  net_bl_ip_fd;            // net_blacklist_ip HASH map fd
+	int                  net_bl_port_fd;          // net_blacklist_port HASH map fd
 	void                *go_ctx;
 };
 
@@ -365,6 +370,25 @@ static int edr_open(struct edr_loader **out, const char *obj_path)
 		}
 	}
 
+	// v0.16: bpf_guard — kprobe on __x64_sys_bpf blocks BPF_MAP_UPDATE_ELEM
+	// from non-edr-agent processes. Best-effort: if the kernel doesn't
+	// support bpf_override_return or the symbol is busy, the agent still
+	// functions for telemetry.
+	prog = bpf_object__find_program_by_name(l->obj, "handle_bpf_write");
+	if (prog) {
+		l->bpf_guard_link = bpf_program__attach_kprobe(prog, false, "__x64_sys_bpf");
+		if (!l->bpf_guard_link) {
+			fprintf(stderr, "bpf: attach_kprobe(__x64_sys_bpf) returned NULL (symbol busy?)\n");
+		} else if (libbpf_get_error(l->bpf_guard_link)) {
+			fprintf(stderr, "bpf: attach_kprobe(__x64_sys_bpf) error: %ld\n",
+				libbpf_get_error(l->bpf_guard_link));
+			bpf_link__destroy(l->bpf_guard_link);
+			l->bpf_guard_link = NULL;
+		}
+	} else {
+		fprintf(stderr, "bpf: program handle_bpf_write not found in object file\n");
+	}
+
 	map = bpf_object__find_map_by_name(l->obj, "events");
 	if (!map) {
 		bpf_link__destroy(l->exec_link);
@@ -407,6 +431,18 @@ static int edr_open(struct edr_loader **out, const char *obj_path)
 
 		struct bpf_map *ldpreload_kill_map = bpf_object__find_map_by_name(l->obj, "ldpreload_kill");
 		l->ldpreload_kill_fd = ldpreload_kill_map ? bpf_map__fd(ldpreload_kill_map) : -1;
+
+		struct bpf_map *bpf_guard_map = bpf_object__find_map_by_name(l->obj, "bpf_guard_enabled");
+		l->bpf_guard_enabled_fd = bpf_guard_map ? bpf_map__fd(bpf_guard_map) : -1;
+
+		struct bpf_map *net_bl_enabled_map = bpf_object__find_map_by_name(l->obj, "net_blacklist_enabled");
+		l->net_bl_enabled_fd = net_bl_enabled_map ? bpf_map__fd(net_bl_enabled_map) : -1;
+
+		struct bpf_map *net_bl_ip_map = bpf_object__find_map_by_name(l->obj, "net_blacklist_ip");
+		l->net_bl_ip_fd = net_bl_ip_map ? bpf_map__fd(net_bl_ip_map) : -1;
+
+		struct bpf_map *net_bl_port_map = bpf_object__find_map_by_name(l->obj, "net_blacklist_port");
+		l->net_bl_port_fd = net_bl_port_map ? bpf_map__fd(net_bl_port_map) : -1;
 	}
 
 	l->rb = ring_buffer__new(l->map_fd, edr_on_event, l, NULL);
@@ -495,6 +531,8 @@ static void edr_close(struct edr_loader *l)
 		bpf_link__destroy(l->module_delete_link);
 	if (l->bpf_op_link)
 		bpf_link__destroy(l->bpf_op_link);
+	if (l->bpf_guard_link)
+		bpf_link__destroy(l->bpf_guard_link);
 	if (l->obj)
 		bpf_object__close(l->obj);
 	free(l);
@@ -582,10 +620,18 @@ static int edr_set_ldpreload_kill(struct edr_loader *l, __u8 enabled)
 	return bpf_map_update_elem(l->ldpreload_kill_fd, &key, &enabled, BPF_ANY) ? -errno : 0;
 }
 
+static int edr_set_bpf_guard(struct edr_loader *l, __u8 enabled)
+{
+	__u32 key = 0;
+	if (!l || l->bpf_guard_enabled_fd < 0)
+		return -EINVAL;
+	return bpf_map_update_elem(l->bpf_guard_enabled_fd, &key, &enabled, BPF_ANY) ? -errno : 0;
+}
+
 // edr_self_protect_status returns a bitmask indicating which
 // self-protection BPF links are active. Bit 1=LSM task_kill,
 // 2=LSM ptrace, 3=kprobe kill, 4=kprobe tgkill, 5=kprobe ptrace,
-// 6=kprobe pidfd_send_signal.
+// 6=kprobe pidfd_send_signal. Bit 7=bpf_guard (v0.16).
 static unsigned int edr_self_protect_status(struct edr_loader *l)
 {
 	unsigned int status = 0;
@@ -596,7 +642,60 @@ static unsigned int edr_self_protect_status(struct edr_loader *l)
 	if (l->selfprotect_tgkill_link) status |= (1 << 4);
 	if (l->selfprotect_ptrace_link) status |= (1 << 5);
 	if (l->selfprotect_pidfd_send_signal_link) status |= (1 << 6);
+	if (l->bpf_guard_link)        status |= (1 << 7);
 	return status;
+}
+
+static int edr_set_net_blacklist_enabled(struct edr_loader *l, __u8 enabled)
+{
+	__u32 key = 0;
+	if (!l || l->net_bl_enabled_fd < 0)
+		return -EINVAL;
+	return bpf_map_update_elem(l->net_bl_enabled_fd, &key, &enabled, BPF_ANY) ? -errno : 0;
+}
+
+static int edr_net_bl_ip_add(struct edr_loader *l, __u32 ip_be)
+{
+	__u8 val = 1;
+	if (!l || l->net_bl_ip_fd < 0)
+		return -EINVAL;
+	return bpf_map_update_elem(l->net_bl_ip_fd, &ip_be, &val, BPF_ANY) ? -errno : 0;
+}
+
+static int edr_net_bl_ip_clear(struct edr_loader *l)
+{
+	__u32 key, next_key;
+	if (!l || l->net_bl_ip_fd < 0)
+		return -EINVAL;
+	while (bpf_map_get_next_key(l->net_bl_ip_fd, NULL, &key) == 0) {
+		bpf_map_delete_elem(l->net_bl_ip_fd, &key);
+		next_key = key;
+		if (bpf_map_get_next_key(l->net_bl_ip_fd, &next_key, &key) != 0)
+			break;
+	}
+	return 0;
+}
+
+static int edr_net_bl_port_add(struct edr_loader *l, __u32 port)
+{
+	__u8 val = 1;
+	if (!l || l->net_bl_port_fd < 0)
+		return -EINVAL;
+	return bpf_map_update_elem(l->net_bl_port_fd, &port, &val, BPF_ANY) ? -errno : 0;
+}
+
+static int edr_net_bl_port_clear(struct edr_loader *l)
+{
+	__u32 key, next_key;
+	if (!l || l->net_bl_port_fd < 0)
+		return -EINVAL;
+	while (bpf_map_get_next_key(l->net_bl_port_fd, NULL, &key) == 0) {
+		bpf_map_delete_elem(l->net_bl_port_fd, &key);
+		next_key = key;
+		if (bpf_map_get_next_key(l->net_bl_port_fd, &next_key, &key) != 0)
+			break;
+	}
+	return 0;
 }
 */
 import "C"
@@ -606,6 +705,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -797,6 +898,128 @@ func (l *libbpfLoader) SetLDPreloadKill(enabled bool) error {
 	return nil
 }
 
+// SetBpfGuard toggles the ring0 BPF_MAP_UPDATE_ELEM guard. When enabled,
+// any attempt by a non-edr-agent process to update a BPF map will be
+// blocked (bpf_override_return -EPERM) and the caller will be killed
+// (bpf_send_signal SIGKILL). v0.16 self-protection enhancement.
+func (l *libbpfLoader) SetBpfGuard(enabled bool) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	var v C.__u8
+	if enabled {
+		v = 1
+	}
+	rc := C.edr_set_bpf_guard(l.handle, v)
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_set_bpf_guard(%t) rc=%d", enabled, int(rc))
+	}
+	return nil
+}
+
+// SetNetBlacklistEnabled toggles ring0 network blocking. When enabled,
+// the connect probe will SIGKILL connecting processes whose destination
+// IP or port matches the net_blacklist_ip / net_blacklist_port maps.
+func (l *libbpfLoader) SetNetBlacklistEnabled(enabled bool) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	var v C.__u8
+	if enabled {
+		v = 1
+	}
+	rc := C.edr_set_net_blacklist_enabled(l.handle, v)
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_set_net_blacklist_enabled(%t) rc=%d", enabled, int(rc))
+	}
+	return nil
+}
+
+// NetBlacklistIPAdd adds an IPv4 address (dotted-quad string) to the
+// ring0 network IP blacklist.
+func (l *libbpfLoader) NetBlacklistIPAdd(ip string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	ipBe, err := parseIPv4ToBE(ip)
+	if err != nil {
+		return fmt.Errorf("bpf: NetBlacklistIPAdd(%q): %w", ip, err)
+	}
+	rc := C.edr_net_bl_ip_add(l.handle, C.__u32(ipBe))
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_net_bl_ip_add(%q) rc=%d", ip, int(rc))
+	}
+	return nil
+}
+
+// NetBlacklistIPClear removes all entries from the ring0 network IP
+// blacklist.
+func (l *libbpfLoader) NetBlacklistIPClear() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	rc := C.edr_net_bl_ip_clear(l.handle)
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_net_bl_ip_clear rc=%d", int(rc))
+	}
+	return nil
+}
+
+// NetBlacklistPortAdd adds a port number to the ring0 network port
+// blacklist.
+func (l *libbpfLoader) NetBlacklistPortAdd(port uint16) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	rc := C.edr_net_bl_port_add(l.handle, C.__u32(port))
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_net_bl_port_add(%d) rc=%d", port, int(rc))
+	}
+	return nil
+}
+
+// NetBlacklistPortClear removes all entries from the ring0 network
+// port blacklist.
+func (l *libbpfLoader) NetBlacklistPortClear() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return ErrNotLoaded
+	}
+	rc := C.edr_net_bl_port_clear(l.handle)
+	if rc != 0 {
+		return fmt.Errorf("bpf: edr_net_bl_port_clear rc=%d", int(rc))
+	}
+	return nil
+}
+
+// parseIPv4ToBE converts a dotted-quad IPv4 string to big-endian uint32.
+func parseIPv4ToBE(s string) (uint32, error) {
+	parts := strings.Split(strings.TrimSpace(s), ".")
+	if len(parts) != 4 {
+		return 0, fmt.Errorf("invalid IPv4 address: %q", s)
+	}
+	var ip uint32
+	for i := 0; i < 4; i++ {
+		v, err := strconv.Atoi(parts[i])
+		if err != nil || v < 0 || v > 255 {
+			return 0, fmt.Errorf("invalid IPv4 address: %q", s)
+		}
+		ip = (ip << 8) | uint32(v)
+	}
+	return ip, nil
+}
+
 func (l *libbpfLoader) SelfProtectStatus() SelfProtectStatus {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -805,12 +1028,13 @@ func (l *libbpfLoader) SelfProtectStatus() SelfProtectStatus {
 	}
 	bits := C.edr_self_protect_status(l.handle)
 	return SelfProtectStatus{
-		LSMTaskKill:  (bits & (1 << 1)) != 0,
-		LSMPtrace:    (bits & (1 << 2)) != 0,
-		KprobeKill:   (bits & (1 << 3)) != 0,
-		KprobeTgkill: (bits & (1 << 4)) != 0,
-		KprobePtrace: (bits & (1 << 5)) != 0,
-		KprobePidfdSendSignal: (bits & (1 << 6)) != 0,
+		LSMTaskKill:            bits&(1<<1) != 0,
+		LSMPtrace:              bits&(1<<2) != 0,
+		KprobeKill:             bits&(1<<3) != 0,
+		KprobeTgkill:           bits&(1<<4) != 0,
+		KprobePtrace:           bits&(1<<5) != 0,
+		KprobePidfdSendSignal:  bits&(1<<6) != 0,
+		BpfGuard:               bits&(1<<7) != 0,
 	}
 }
 

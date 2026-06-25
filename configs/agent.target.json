@@ -1,0 +1,109 @@
+{
+  "policy_path": "/etc/edr/policy.json",
+  "baseline_path": "/etc/edr/baseline.json",
+  "event_path": "/var/lib/edr/events.jsonl",
+  "response_path": "/var/lib/edr/responses.jsonl",
+  "artifact_dir": "/var/lib/edr/forensics",
+  "socket_path": "/run/edr-agent.sock",
+  "interval_sec": 5,
+  "syslog": false,
+  "dry_run": true,
+  "allowed_uids": [
+    0,
+    1000
+  ],
+  "retention": {
+    "max_bytes": 104857600,
+    "max_backups": 10
+  },
+  "file_watch": {
+    "mode": "inotify",
+    "paths": [
+      "/etc/edr",
+      "/var/www/edgeops",
+      "/opt/edgeops/lib",
+      "/var/lib/edgeops",
+      "/etc/nginx",
+      "/etc/postgresql",
+      "/etc/redis",
+      "/sys/kernel/debug/kprobes",
+      "/root/.ssh",
+      "/root/waf-proxy",
+      "/tmp",
+      "/etc/ssh",
+      "/var/spool/cron",
+      "/etc/cron.d",
+      "/etc/systemd/system",
+      "/etc/rc.local",
+      "/root/.bashrc",
+      "/etc/pam.d",
+      "/lib/security",
+      "/opt/edr",
+      "/var/lib/edr",
+      "/var/log/edr"
+    ]
+  },
+  "nft": {
+    "enabled": true,
+    "dry_run": true,
+    "table": "edr",
+    "chain": "blocklist"
+  },
+  "integrity": {
+    "enable_chain": true,
+    "key_path": "/var/lib/edr/log.key",
+    "state_path": "/var/lib/edr/events.jsonl.state",
+    "algorithm": "sha256"
+  },
+  "suppression": {
+    "process_cooldown_sec": 30,
+    "file_cooldown_sec": 60,
+    "network_cooldown_sec": 30,
+    "rate_per_sec": 20,
+    "burst": 20,
+    "state_path": "/var/lib/edr/suppressor.json"
+  },
+  "anchor": {
+    "enabled": true,
+    "url": "http://172.16.1.187:9090/anchor",
+    "file_path": "/var/lib/edr/anchor.json",
+    "interval_sec": 60
+  },
+  "bpf": {
+    "enabled": true,
+    "obj_dir": "/opt/edr/probes",
+    "ringbuf_pages": 512,
+    "ringbuf_path": "/sys/fs/bpf/edr/events"
+  },
+  "fanotify": {
+    "enabled": true,
+    "paths": [
+      "/etc",
+      "/tmp",
+      "/var/spool/cron",
+      "/usr/local/bin",
+      "/var/www/edgeops",
+      "/opt/edgeops/lib",
+      "/var/lib/edgeops/keys",
+      "/var/lib/edgeops",
+      "/etc/nginx",
+      "/etc/postgresql",
+      "/etc/redis",
+      "/sys/kernel/debug/kprobes",
+      "/opt/edr",
+      "/etc/edr",
+      "/var/lib/edr",
+      "/var/log/edr"
+    ]
+  },
+  "signing_key_path": "/var/lib/edr/signing.key",
+  "rootkit_detection": {
+    "enabled": true,
+    "interval_sec": 30,
+    "monitor_only": false
+  },
+  "admin_auth": {
+    "admin_key_path": "/var/lib/edr/admin.key"
+  },
+  "webhooks": []
+}

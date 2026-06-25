@@ -105,3 +105,34 @@ struct {
 	__type(key, __u32);
 	__type(value, __u8);
 } ldpreload_kill SEC(".maps") __attribute__((weak));
+
+// net_blacklist_enabled is a single-entry ARRAY toggle for ring0
+// network blocking. When set to non-zero, the connect probe will
+// SIGKILL the connecting process if the destination matches
+// net_blacklist_ip or net_blacklist_port maps.
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, __u8);
+} net_blacklist_enabled SEC(".maps") __attribute__((weak));
+
+// net_blacklist_ip is a hash map of IPv4 destination addresses
+// (network byte order, __u32) to non-zero sentinel. When the
+// connect probe observes a matching outbound connection and
+// net_blacklist_enabled is set, it issues bpf_send_signal(SIGKILL).
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 512);
+	__type(key, __u32);
+	__type(value, __u8);
+} net_blacklist_ip SEC(".maps") __attribute__((weak));
+
+// net_blacklist_port is a hash map of destination ports (host byte
+// order, __u16 stored as __u32 for alignment) to non-zero sentinel.
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 256);
+	__type(key, __u32);
+	__type(value, __u8);
+} net_blacklist_port SEC(".maps") __attribute__((weak));

@@ -18,13 +18,13 @@ var/
 # Go toolchain (host-specific, not project code)
 .tools/
 
-# Compiled binaries
-edr-agent
-edrctl
-edr-enforcer
-edr-orchestrator
-edr-sensor
-edr-supervisor
+# Compiled binaries (root directory only — does not block cmd/ source trees)
+/edr-agent
+/edrctl
+/edr-enforcer
+/edr-orchestrator
+/edr-sensor
+/edr-supervisor
 
 # BPF probes source directory c/ (intermediate build artifacts)
 internal/bpf/c/

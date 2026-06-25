@@ -27,6 +27,28 @@ int handle_connect(struct trace_event_raw_inet_sock_set_state *ctx)
 		return 0;
 	}
 
+	// Ring0 network blacklist: check before emitting event so
+	// blocking is synchronous with the connect attempt.
+	__u32 en_key = 0;
+	__u8 *enabled = bpf_map_lookup_elem(&net_blacklist_enabled, &en_key);
+	if (enabled && *enabled) {
+		// Check IP blacklist (IPv4 only for ring0 fast path)
+		if (ctx->family == 2 /* AF_INET */) {
+			__u32 daddr_be;
+			bpf_probe_read_kernel(&daddr_be, sizeof(daddr_be), &ctx->daddr);
+			if (bpf_map_lookup_elem(&net_blacklist_ip, &daddr_be)) {
+				bpf_send_signal(9); // SIGKILL
+				return 0;
+			}
+		}
+		// Check port blacklist
+		__u32 port = (__u32)ctx->dport;
+		if (bpf_map_lookup_elem(&net_blacklist_port, &port)) {
+			bpf_send_signal(9); // SIGKILL
+			return 0;
+		}
+	}
+
 	struct edr_event *e;
 	e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
 	if (!e) {

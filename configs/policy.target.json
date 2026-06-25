@@ -1,0 +1,1772 @@
+{
+  "schema_version": "v0.5",
+  "rules": [
+    {
+      "id": "ROOTKIT-001",
+      "description": "检测到内核模块加载 (init_module/finit_module)",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-002",
+      "description": "/proc 与 BPF 进程列表不一致，检测到隐藏进程",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill_tree",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-003",
+      "description": "检测到内核模块卸载 (delete_module)",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-004",
+      "description": "/sys/module 与 /proc/modules 不一致，检测到隐藏内核模块",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-005",
+      "description": "检测到 eBPF 程序操作 (bpf() 系统调用)",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-006",
+      "description": "BPF 观测到的远程地址在 /proc/net/tcp 中缺失 — Rootkit 隐藏了网络连接",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "ROOTKIT-007",
+      "description": "Syscall Table 完整性异常 — 关键 syscall 地址不在内核 .text 段内",
+      "enabled": true,
+      "category": "rootkit",
+      "severity": "critical",
+      "decision": "block",
+      "action": "network_isolate",
+      "match": {},
+      "priority": 5,
+      "effect": [
+        "audit",
+        "response"
+      ]
+    },
+    {
+      "id": "P001-suspicious-shell-download",
+      "description": "Shell 命令下载并执行类 payload",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "curl http://"
+      },
+      "whitelist": [
+        {
+          "process_path": "/usr/bin/apt"
+        }
+      ]
+    },
+    {
+      "id": "P002-credential-file-access",
+      "description": "进程命令行引用了敏感凭证文件",
+      "category": "process",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "cmdline_contains": "/etc/shadow"
+      }
+    },
+    {
+      "id": "P003-reverse-shell-pattern",
+      "description": "常见 bash 反弹 shell 模式 /dev/tcp/",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "/dev/tcp/"
+      }
+    },
+    {
+      "id": "P003b-python-reverse-shell",
+      "description": "Python socket 反弹 shell",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "socket.socket"
+      }
+    },
+    {
+      "id": "P003c-socat-reverse-shell",
+      "description": "Socat exec 反弹 shell",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "exec:"
+      }
+    },
+    {
+      "id": "P003d-perl-reverse-shell",
+      "description": "Perl IO::Socket 反弹 shell",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "IO::Socket::INET"
+      }
+    },
+    {
+      "id": "P003e-ncat-reverse-shell",
+      "description": "Ncat -e 执行反弹 shell",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "ncat -e"
+      }
+    },
+    {
+      "id": "P004-python-listener",
+      "description": "Python SimpleHTTPServer 类临时服务",
+      "category": "process",
+      "severity": "medium",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "http.server"
+      }
+    },
+    {
+      "id": "P005-temp-exec",
+      "description": "从可写临时目录 /tmp/ 执行程序",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "/tmp/"
+      }
+    },
+    {
+      "id": "N001-suspicious-listener",
+      "description": "可疑本地监听端口 4444",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 4444
+      }
+    },
+    {
+      "id": "N002-known-bad-remote",
+      "description": "连接到已知恶意地址 203.0.113.66",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "remote_addr": "203.0.113.66"
+      }
+    },
+    {
+      "id": "P006-after-hours-admin",
+      "description": "非工作时间执行管理命令",
+      "category": "process",
+      "severity": "medium",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "cmdline_contains": "useradd"
+      },
+      "time_window": {
+        "start": "20:00",
+        "end": "06:00"
+      }
+    },
+    {
+      "id": "F001-policy-change",
+      "description": "策略文件被修改",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path": "configs/policy.json"
+      }
+    },
+    {
+      "id": "F002-config-permission-guard",
+      "description": "敏感配置目录权限变更",
+      "category": "file",
+      "severity": "medium",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "configs/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "ATT001-ptrace-self-check",
+      "description": "进程使用 ptrace 自检 (反调试技术)",
+      "category": "process",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "ptrace_self_check": true
+      }
+    },
+    {
+      "id": "ATT002-ld-preload-injection",
+      "description": "进程通过 LD_PRELOAD 注入",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "env_contains": "LD_PRELOAD"
+      }
+    },
+    {
+      "id": "ATT003-frida-detected",
+      "description": "检测到 Frida 插桩框架",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "maps_contains": "frida"
+      }
+    },
+    {
+      "id": "ATT004-ld-so-preload-write",
+      "description": "修改 /etc/ld.so.preload",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/etc/ld.so.preload",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "SELF001-agent-binary-access",
+      "description": "非授权访问 EDR 代理二进制文件",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path": "/opt/edr/edr-agent",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "B001-shadow-access",
+      "description": "访问 /etc/shadow 密码文件",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/etc/shadow"
+      }
+    },
+    {
+      "id": "B002-ssh-key-access",
+      "description": "访问 root SSH 私钥",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/root/.ssh/id_"
+      }
+    },
+    {
+      "id": "B004-sudoers-modify",
+      "description": "修改 sudoers 配置",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/sudoers"
+      }
+    },
+    {
+      "id": "B005-shadow-cmdline",
+      "description": "命令行引用 /etc/shadow",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "/etc/shadow"
+      },
+      "whitelist": [
+        {
+          "process_path": "/usr/bin/passwd"
+        },
+        {
+          "process_path": "/usr/sbin/chpasswd"
+        }
+      ]
+    },
+    {
+      "id": "B010-suid-exec-escalation",
+      "description": "设置 SUID 位 (提权尝试)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "chmod +s"
+      }
+    },
+    {
+      "id": "B011-setuid-escalation",
+      "description": "设置 setuid 位",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "chmod u+s"
+      }
+    },
+    {
+      "id": "B012-cap-setuid",
+      "description": "设置 Linux capabilities",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "setcap"
+      }
+    },
+    {
+      "id": "B020-evil-winrm",
+      "description": "Evil-WinRM 横向移动工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "evil-winrm"
+      }
+    },
+    {
+      "id": "B021-crackmapexec",
+      "description": "CrackMapExec 横向移动工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "crackmapexec"
+      }
+    },
+    {
+      "id": "B022-impacket-psexec",
+      "description": "Impacket psexec.py 横向移动",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "psexec.py"
+      }
+    },
+    {
+      "id": "B023-impacket-wmiexec",
+      "description": "Impacket wmiexec.py 横向移动",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "wmiexec.py"
+      }
+    },
+    {
+      "id": "B024-impacket-smbexec",
+      "description": "Impacket smbexec.py 横向移动",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "smbexec.py"
+      }
+    },
+    {
+      "id": "B025-ssh-tunnel",
+      "description": "SSH 端口转发隧道",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "ssh -L"
+      }
+    },
+    {
+      "id": "B026-ssh-reverse-tunnel",
+      "description": "SSH 反向隧道 (C2 通道)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "ssh -R"
+      }
+    },
+    {
+      "id": "B027-chisel-client",
+      "description": "Chisel 隧道工具客户端",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "chisel client"
+      }
+    },
+    {
+      "id": "B028-proxychains",
+      "description": "Proxychains 网络代理工具",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "proxychains"
+      }
+    },
+    {
+      "id": "B032-iodine",
+      "description": "Iodine DNS 隧道工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "iodine"
+      }
+    },
+    {
+      "id": "B033-dnscat",
+      "description": "dnscat2 DNS 隧道工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "dnscat2"
+      }
+    },
+    {
+      "id": "B050-crontab-write",
+      "description": "写入用户 crontab 目录 (持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/var/spool/cron/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B051-cron-d-write",
+      "description": "写入 /etc/cron.d (持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/cron.d/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B052-systemd-unit-write",
+      "description": "写入 systemd service 目录 (持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/systemd/system/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B053-authorized-keys-write",
+      "description": "写入 SSH authorized_keys (后门持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_suffix": "authorized_keys",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B054-rc-local-write",
+      "description": "写入 /etc/rc.local (持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/etc/rc.local",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B055-bashrc-write",
+      "description": "写入 root bashrc (持久化)",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/root/.bashrc",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B057-systemd-enable",
+      "description": "systemctl enable 命令 (持久化)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "systemctl enable"
+      }
+    },
+    {
+      "id": "B058-crontab-cmd",
+      "description": "crontab -e 编辑命令 (持久化)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "crontab -e"
+      }
+    },
+    {
+      "id": "B060-nsenter",
+      "description": "nsenter 针对 PID 1 (容器逃逸)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "nsenter -t 1"
+      }
+    },
+    {
+      "id": "B061-mount-proc-escape",
+      "description": "绑定挂载 /proc (容器逃逸)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "mount --bind /proc"
+      }
+    },
+    {
+      "id": "B062-sysrq-trigger",
+      "description": "访问 /proc/sysrq-trigger (内核操纵)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path": "/proc/sysrq-trigger"
+      }
+    },
+    {
+      "id": "B063-core-pattern-escape",
+      "description": "写入 /proc/sys/kernel/core_pattern (容器逃逸)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/proc/sys/kernel/core_pattern",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "B070-history-clear",
+      "description": "清除 bash 历史 (反取证)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "history -c"
+      }
+    },
+    {
+      "id": "B071-shred-logs",
+      "description": "粉碎日志文件 (反取证)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "shred /var/log"
+      }
+    },
+    {
+      "id": "B072-truncate-logs",
+      "description": "截断日志文件 (反取证)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "truncate -s 0 /var/log"
+      }
+    },
+    {
+      "id": "B074-secure-delete",
+      "description": "安全删除工具 (反取证)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "srm "
+      }
+    },
+    {
+      "id": "B076-log-redirect-overwrite",
+      "description": "重定向覆盖日志文件 (反取证)",
+      "category": "process",
+      "severity": "medium",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "> /var/log/"
+      }
+    },
+    {
+      "id": "B080-responder",
+      "description": "Responder LLMNR/NBT-NS 投毒工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "responder"
+      }
+    },
+    {
+      "id": "B081-bloodhound",
+      "description": "BloodHound AD 侦察工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "bloodhound"
+      }
+    },
+    {
+      "id": "B082-mimikatz-pattern",
+      "description": "Mimikatz 类凭证转储模式",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "sekurlsa::logonpasswords"
+      }
+    },
+    {
+      "id": "B083-lazagne",
+      "description": "LaZagne 凭证恢复工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "lazagne"
+      }
+    },
+    {
+      "id": "B084-hashcat",
+      "description": "Hashcat 密码破解工具",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "hashcat"
+      }
+    },
+    {
+      "id": "B085-john",
+      "description": "John the Ripper 密码破解器",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "john"
+      }
+    },
+    {
+      "id": "B086-hydra",
+      "description": "Hydra 暴力破解工具",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "hydra"
+      }
+    },
+    {
+      "id": "B087-nmap-aggressive",
+      "description": "Nmap 激进扫描",
+      "category": "process",
+      "severity": "medium",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "nmap -A"
+      }
+    },
+    {
+      "id": "B088-masscan",
+      "description": "Masscan 端口扫描器",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "masscan"
+      }
+    },
+    {
+      "id": "SVC001-systemctl-stop",
+      "description": "systemctl stop 执行 (服务中断)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "systemctl stop"
+      }
+    },
+    {
+      "id": "SVC002-systemctl-disable",
+      "description": "systemctl disable 执行",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "systemctl disable"
+      }
+    },
+    {
+      "id": "SVC003-iptables-modify",
+      "description": "EDR 管控外的 iptables 规则修改",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "iptables -A"
+      }
+    },
+    {
+      "id": "SVC004-nft-modify",
+      "description": "EDR 管控外的 nft 规则修改",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "nft add rule"
+      }
+    },
+    {
+      "id": "SVC005-kill-critical",
+      "description": "向关键服务进程发送信号",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "kill -9"
+      }
+    },
+    {
+      "id": "SVC006-dd-disk-fill",
+      "description": "dd 写入块设备 (磁盘填充攻击)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "dd if="
+      }
+    },
+    {
+      "id": "SVC007-hosts-modify",
+      "description": "修改 /etc/hosts (DNS 劫持)",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/etc/hosts"
+      }
+    },
+    {
+      "id": "SVC008-resolv-modify",
+      "description": "修改 /etc/resolv.conf (DNS 劫持)",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/etc/resolv.conf"
+      }
+    },
+    {
+      "id": "SVC009-nginx-conf-write",
+      "description": "写入 nginx 配置目录",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/nginx/"
+      }
+    },
+    {
+      "id": "SVC010-mysql-conf-write",
+      "description": "写入 MySQL 配置目录",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/mysql/"
+      }
+    },
+    {
+      "id": "PER001-vim-plugin-write",
+      "description": "写入 Vim 插件目录 (持久化)",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/root/.vim/plugin/"
+      }
+    },
+    {
+      "id": "PER002-nvim-plugin-write",
+      "description": "写入 Neovim 插件目录 (持久化)",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/root/.config/nvim/"
+      }
+    },
+    {
+      "id": "PER003-git-hooks-write",
+      "description": "写入 Git hooks 目录 (持久化)",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_suffix": ".git/hooks/"
+      }
+    },
+    {
+      "id": "PER004-pam-module-write",
+      "description": "写入 PAM 模块目录 (认证持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/lib/security/"
+      }
+    },
+    {
+      "id": "PER005-pam-config-write",
+      "description": "写入 PAM 配置 (认证持久化)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/etc/pam.d/"
+      }
+    },
+    {
+      "id": "PER006-systemd-user-write",
+      "description": "写入 systemd user unit 目录",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/root/.config/systemd/user/"
+      }
+    },
+    {
+      "id": "PER007-at-job-write",
+      "description": "写入 at 作业池",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/var/spool/at/"
+      }
+    },
+    {
+      "id": "PER008-motd-write",
+      "description": "写入 motd 目录",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/etc/update-motd.d/"
+      }
+    },
+    {
+      "id": "PER009-profile-write",
+      "description": "写入 /etc/profile.d",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_prefix": "/etc/profile.d/"
+      }
+    },
+    {
+      "id": "PER010-zshrc-write",
+      "description": "写入 .zshrc (shell 持久化)",
+      "category": "file",
+      "severity": "medium",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_suffix": ".zshrc"
+      }
+    },
+    {
+      "id": "PER011-ssh-rc-write",
+      "description": "写入 ~/.ssh/rc (SSH 登录执行)",
+      "category": "file",
+      "severity": "high",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path": "/root/.ssh/rc"
+      }
+    },
+    {
+      "id": "PER012-inputrc-write",
+      "description": "写入 .inputrc (readline exec)",
+      "category": "file",
+      "severity": "medium",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_suffix": ".inputrc"
+      }
+    },
+    {
+      "id": "PER013-gitconfig-write",
+      "description": "写入 .gitconfig",
+      "category": "file",
+      "severity": "medium",
+      "decision": "alert",
+      "action": "none",
+      "match": {
+        "file_path_suffix": ".gitconfig"
+      }
+    },
+    {
+      "id": "PRIVESC001-setuid-root",
+      "description": "进程变更到 root UID (setuid 到 0)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "*"
+      }
+    },
+    {
+      "id": "PRIVESC002-setgid-root",
+      "description": "进程变更到 root GID (setgid 到 0)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "*"
+      }
+    },
+    {
+      "id": "PRIVESC003-capset-called",
+      "description": "进程调用 capset (能力变更)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "process_name": "*"
+      }
+    },
+    {
+      "id": "JAVA-001",
+      "description": "Java 进程衍生 shell 命令 - ping 注入 (DiagnosticController 命令注入 RCE)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "-c ping -c"
+      }
+    },
+    {
+      "id": "JAVA-002",
+      "description": "Java 进程衍生带管道/命令链接的 shell (SSTI/命令注入 RCE 指标)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "; "
+      }
+    },
+    {
+      "id": "JAVA-003",
+      "description": "Java 进程衍生 curl/wget (SSRF 外带数据或下载 payload)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "curl http"
+      },
+      "whitelist": [
+        {
+          "process_path": "/usr/bin/apt"
+        },
+        {
+          "process_path": "/usr/lib/apt"
+        }
+      ]
+    },
+    {
+      "id": "JAVA-004",
+      "description": "Java 进程衍生 Python 解释器 (FreeMarker SSTI RCE 高置信度)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "python"
+      }
+    },
+    {
+      "id": "JAVA-005",
+      "description": "wkhtmltopdf 被调用 (Report 服务 SSTI/SSRF PDF 生成)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "wkhtmltopdf"
+      }
+    },
+    {
+      "id": "SSRF-001",
+      "description": "出站连接到云元数据服务 169.254.169.254 (SSRF 元数据窃取)",
+      "category": "network",
+      "severity": "critical",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "remote_addr": "169.254.169.254"
+      }
+    },
+    {
+      "id": "SSRF-002",
+      "description": "出站连接到内网私有地址段 (来自 web 服务的 SSRF 内网探测)",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "remote_addr": "10."
+      }
+    },
+    {
+      "id": "SSRF-003",
+      "description": "出站连接到本网段其他内网 IP (SSRF 横向探测 172.16.1.x)",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "remote_addr": "172.16.1."
+      }
+    },
+    {
+      "id": "WEB-001",
+      "description": "写入 web 根目录 /var/www/edgeops/ (webshell/后门部署)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/var/www/edgeops/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "WEB-002",
+      "description": "写入 JAR 库目录 /opt/edgeops/lib/ (木马 JAR 部署)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/opt/edgeops/lib/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "WEB-003",
+      "description": "访问 JWT 签名密钥目录 /var/lib/edgeops/keys/ (密钥窃取 → token 伪造)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/var/lib/edgeops/keys/"
+      }
+    },
+    {
+      "id": "WEB-004",
+      "description": "写入 nginx site 配置 (反向代理劫持)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/nginx/sites-",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "WEB-005",
+      "description": "写入 PostgreSQL 配置目录 (数据库配置篡改)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/postgresql/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "WEB-006",
+      "description": "写入 Redis 配置 (缓存投毒或持久化后门)",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/redis/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "WEB-007",
+      "description": "访问 ShopPulse 源代码目录 /root/he/ (知识产权窃取)",
+      "category": "file",
+      "severity": "high",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/root/he/"
+      }
+    },
+    {
+      "id": "DB-001",
+      "description": "非本地 PostgreSQL 连接 5432 端口 (数据库外连/窃取)",
+      "category": "network",
+      "severity": "critical",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 5432
+      }
+    },
+    {
+      "id": "DB-002",
+      "description": "非本地 Redis 连接 6379 端口 (缓存投毒/Redis RCE)",
+      "category": "network",
+      "severity": "critical",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 6379
+      }
+    },
+    {
+      "id": "SVC-011",
+      "description": "非 edgeops-diagnostic 进程监听 9001 端口 (后门 diagnostic 服务)",
+      "category": "network",
+      "severity": "critical",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 9001
+      }
+    },
+    {
+      "id": "SVC-012",
+      "description": "非 edgeops-plugin-host 进程监听 9002 端口 (后门 plugin 服务)",
+      "category": "network",
+      "severity": "critical",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 9002
+      }
+    },
+    {
+      "id": "SVC-013",
+      "description": "非 edgeops-report 进程监听 8091 端口 (后门 report 服务)",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 8091
+      }
+    },
+    {
+      "id": "APP-001",
+      "description": "Java/Web 进程读取 /etc/shadow (XXE/SSTI 文件外带)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "/etc/shadow"
+      },
+      "whitelist": [
+        {
+          "process_path": "/usr/bin/passwd"
+        },
+        {
+          "process_path": "/usr/sbin/chpasswd"
+        }
+      ]
+    },
+    {
+      "id": "APP-002",
+      "description": "进程访问 PostgreSQL 数据目录 (数据库文件直接窃取)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/var/lib/postgresql/"
+      }
+    },
+    {
+      "id": "APP-003",
+      "description": "从临时目录加载 JAR (恶意 Plugin 类加载)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "/tmp/.jar"
+      }
+    },
+    {
+      "id": "APP-004",
+      "description": "cat/读取敏感凭证文件 (后渗透凭证收集)",
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "cat /etc/passwd"
+      }
+    },
+    {
+      "id": "NET-003",
+      "description": "出站连接到 4444 端口 (Metasploit/CobaltStrike 标准反弹端口)",
+      "category": "network",
+      "severity": "high",
+      "decision": "block",
+      "action": "nft_block",
+      "match": {
+        "protocol": "tcp",
+        "local_port": 4444
+      }
+    },
+    {
+      "id": "B089-bpftool-usage",
+      "description": "bpftool 执行 (可能用于攻击 EDR BPF 自保护)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "bpftool"
+      }
+    },
+    {
+      "id": "B090-bpf-map-tamper",
+      "description": "非 EDR 进程执行 BPF map 操作",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "BPF_MAP_UPDATE_ELEM"
+      }
+    },
+    {
+      "id": "SELF002-edr-map-tamper",
+      "description": "进程命令行含 agent_pid (可能在尝试读写 EDR 自保护 BPF 映射)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "agent_pid"
+      }
+    },
+    {
+      "id": "SELF003-bpf-prog-detach",
+      "description": "非 EDR 进程卸载 BPF 程序 (BPF_PROG_DETACH)",
+      "category": "process",
+      "severity": "critical",
+      "decision": "block",
+      "action": "kill",
+      "match": {
+        "cmdline_contains": "BPF_PROG_DETACH"
+      }
+    },
+    {
+      "id": "SELF004-debugfs-kprobe-write",
+      "description": "写入 /sys/kernel/debug/kprobes/ (禁用 kprobe → 解除 EDR 自保护)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/sys/kernel/debug/kprobes/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "TMP-001",
+      "description": "/tmp/ 写入可执行脚本 (.sh/.py/.pl/.elf) — 攻击者常用 /tmp/ 部署后门",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/tmp/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "TMP-002",
+      "description": "/tmp/ 写入攻击命名模式 (z_前缀) — 红队侦察/持久化文件",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/tmp/z_",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "HARD-001",
+      "description": "写入 /root/.ssh/authorized_keys (SSH后门) — 攻击者添加自己的公钥",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path": "/root/.ssh/authorized_keys",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "HARD-002",
+      "description": "写入 /root/.ssh/ 目录 (SSH密钥篡改)",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/root/.ssh/",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "HARD-003",
+      "description": "写入 /tmp/ 可执行脚本 (.sh) — 攻击者常用 /tmp/ 部署后门",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/tmp/",
+        "file_path_suffix": ".sh",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "HARD-004",
+      "description": "写入 /tmp/ Python脚本 (.py) — 攻击者 Python 后门",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/tmp/",
+        "file_path_suffix": ".py",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "HARD-005",
+      "description": "写入 /tmp/ ELF可执行文件 — 攻击者二进制payload",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "quarantine",
+      "match": {
+        "file_path_prefix": "/tmp/",
+        "file_path_suffix": ".elf",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "HARD-006",
+      "description": "写入 WAF 配置 /root/waf-proxy/ — 攻击者篡改 WAF 规则",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/root/waf-proxy/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "HARD-007",
+      "description": "写入 /etc/ssh/sshd_config (SSH配置篡改) — 攻击者开放 SSH 或修改认证",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fix_permissions",
+      "match": {
+        "file_path_prefix": "/etc/ssh/sshd_config",
+        "file_op": "write"
+      }
+    },
+    {
+      "id": "SELF001b",
+      "description": "访问 /opt/edr/ — 仅 edr-agent/edrctl 允许, 其他进程全部拒绝",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/opt/edr/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "SELF001c",
+      "description": "访问 /etc/edr/ — 仅 edr-agent/edrctl 允许, 其他进程全部拒绝",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/etc/edr/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "SELF005-edr-data-access",
+      "description": "非授权访问 /var/lib/edr/ — 日志链、密钥、签名文件、admin key 所在目录",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/var/lib/edr/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "SELF006-edr-log-access",
+      "description": "非授权访问 /var/log/edr/ — EDR 审计日志目录, 防止日志篡改/删除",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path_prefix": "/var/log/edr/",
+        "file_op": "open"
+      }
+    },
+    {
+      "id": "SELF007-edr-socket-tamper",
+      "description": "非授权访问 /run/edr-agent.sock — 防止 Unix socket 替换攻击",
+      "category": "file",
+      "severity": "critical",
+      "decision": "block",
+      "action": "fanotify_deny",
+      "match": {
+        "file_path": "/run/edr-agent.sock",
+        "file_op": "open"
+      }
+    }
+  ],
+  "process_access": {
+    "mode": "enforce",
+    "severity": "high",
+    "action": "kill",
+    "whitelist": [
+      {
+        "process_path": "/usr/sbin/nginx"
+      },
+      {
+        "process_path": "/usr/bin/java"
+      },
+      {
+        "process_name": "java"
+      },
+      {
+        "process_path": "/usr/sbin/sshd"
+      },
+      {
+        "process_path": "/usr/lib/systemd/systemd"
+      },
+      {
+        "process_name": "postgres"
+      },
+      {
+        "process_name": "redis-server"
+      },
+      {
+        "process_path": "/usr/bin/bash"
+      },
+      {
+        "process_path": "/usr/bin/sh"
+      },
+      {
+        "process_path": "/usr/bin/dash"
+      },
+      {
+        "process_name": "bash"
+      },
+      {
+        "process_name": "sh"
+      },
+      {
+        "process_name": "waf-proxy"
+      },
+      {
+        "process_name": "systemd"
+      },
+      {
+        "process_name": "systemd-logind"
+      },
+      {
+        "process_name": "systemd-journal"
+      },
+      {
+        "process_name": "systemd-udevd"
+      },
+      {
+        "process_name": "systemd-resolve"
+      },
+      {
+        "process_name": "systemd-network"
+      },
+      {
+        "process_name": "rsyslogd"
+      },
+      {
+        "process_name": "cron"
+      },
+      {
+        "process_name": "dbus-daemon"
+      },
+      {
+        "process_name": "python3"
+      },
+      {
+        "process_path": "/usr/bin/python3"
+      },
+      {
+        "process_name": "sshd"
+      },
+      {
+        "process_name": "CRON"
+      }
+    ],
+    "blacklist": [
+      {
+        "process_name": "nc"
+      },
+      {
+        "process_name": "ncat"
+      },
+      {
+        "process_path": "/tmp/edr-denied"
+      },
+      {
+        "cmdline_contains": "edr_blacklisted_process"
+      },
+      {
+        "process_name": "crackmapexec"
+      },
+      {
+        "process_name": "evil-winrm"
+      },
+      {
+        "process_name": "chisel"
+      },
+      {
+        "process_name": "iodine"
+      },
+      {
+        "process_name": "dnscat2"
+      },
+      {
+        "process_name": "proxychains"
+      },
+      {
+        "process_name": "responder"
+      }
+    ]
+  },
+  "self_protection": {
+    "enabled": true,
+    "audit_severity": "critical",
+    "enforce_mode": "kill",
+    "shutdown_enabled": true
+  }
+}

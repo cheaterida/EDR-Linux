@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"edr/internal/adminauth"
 )
 
 type peerCredKey struct{}
@@ -250,4 +253,43 @@ func requireAuthorized(w http.ResponseWriter, r *http.Request, allowedUIDs []int
 		return false
 	}
 	return true
+}
+
+// requireAdminAuth checks that the request carries a valid admin token
+// for the given action. Returns true when the token is valid.
+func requireAdminAuth(w http.ResponseWriter, r *http.Request, adminKey []byte, action string) bool {
+	if len(adminKey) < 16 {
+		http.Error(w, "admin key not configured", http.StatusServiceUnavailable)
+		return false
+	}
+	token := r.Header.Get("X-EDR-Admin-Token")
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		http.Error(w, "admin token required", http.StatusForbidden)
+		return false
+	}
+	if err := adminauth.VerifyToken(adminKey, token, action, time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// adminAuthOK is a non-blocking version that returns true on success,
+// without writing an HTTP response. Useful inside handlers that have
+// fallback auth paths.
+func adminAuthOK(r *http.Request, adminKey []byte, action string) bool {
+	if len(adminKey) < 16 {
+		return false
+	}
+	token := r.Header.Get("X-EDR-Admin-Token")
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		return false
+	}
+	return adminauth.VerifyToken(adminKey, token, action, time.Now()) == nil
 }

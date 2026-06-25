@@ -494,6 +494,38 @@ edrctl report generate from="2026-06-16 00:00" to="2026-06-16 23:59" output=repo
 
 报告包含：总览（事件/告警/阻断数）、按主机分组统计、按规则分组统计、攻击时间线、攻击链还原（ProcTree 关联）、响应记录、日志完整性验证。
 
+#### 事件研判 (v0.8)
+
+```bash
+# 五面板事件研判（规则命中 + 行为时间线 + EDR响应 + 网络 + 文件）
+edrctl investigate <event_id>
+
+# 进程树可视化
+edrctl pstree                         # 紧凑树形
+edrctl pstree --detail                # 详细模式 (user/cmdline)
+edrctl pstree --filter=ssh            # 过滤关键字
+
+# 审计导出（SIEM 兼容格式）
+edrctl audit export format=cef        # CEF (ArcSight/QRadar)
+edrctl audit export format=leef       # LEEF (QRadar)
+edrctl audit integrity                # 日志链完整性报告
+```
+
+#### 管理认证 (v0.8)
+
+```bash
+# 生成管理密钥
+edrctl admin gen-key > /var/lib/edr/admin.key
+
+# 申请操作令牌（5 分钟有效）
+edrctl admin token shutdown          # 停机令牌
+edrctl admin token restart           # 重启令牌
+
+# 令牌授权执行
+edrctl admin shutdown <TOKEN>        # 加密停机
+edrctl admin restart <TOKEN>         # 加密重启
+```
+
 #### 取证导出
 
 ```bash
@@ -1258,6 +1290,7 @@ EDR/
 | **v0.7.5** | **protection-path remediation** | **修复 `LD_PRELOAD` fast-path kill 身份竞态、删除错误的 pidfd 二次身份比对、收紧 fanotify 对 `/opt/edr` 与 `/etc/edr` 的白名单，使强保护路径可真实验证** |
 | **v0.7.4** | **full-stack deploy hardening** | **完整部署链路补强：full-stack 打包脚本强制现编 `-tags bpf` 的 `edr-agent/edrctl`、修复空 `vmlinux.h` 造成的假完整包风险、补齐远端整包部署与验证路径** |
 | **v0.7.3** | **ha-supervisor hardening** | **split A/B HA 收尾：本地 Unix socket `SO_PEERCRED` 鉴权恢复、`sensor -> orchestrator` batch push 双侧验证、root session 系统进程分类降噪、remote supervisor 持久化状态迁移去重、peer down → lease → restart → release 实机演练通过** |
+| **v0.8** | **security-hardening** | **安全强化：admin token 加密令牌管理、50+ 规则 alert→block 硬化、CLI 研判工作台 (investigate/pstree)、sys_process_vm_writev 阻断、inode 文件识别、bash TTY 分流、双守护进程、module kprobe 阻断、网络隐藏/Syscall 完整性检测** |
 
 ---
 
@@ -1267,9 +1300,25 @@ EDR/
 
 | 边界 | 说明 |
 |------|------|
-| 网络 ring0 阻断未实现 | connect 探针仅检测，不阻断 |
-| 抑制器状态跨重启 | 当前重启清零 |
 | PID namespace 未验证 | /proc 解析不验证 PID 属于当前 namespace (S22) |
+| 规则 DSL 升级 | flat match，不支持 Sigma/YARA |
+| 中心化管理 | 单机 agent，无多节点控制台 |
+
+### v0.8 已解决边界
+
+| 边界 | 解决方案 |
+|------|----------|
+| 网络 ring0 阻断未实现 | connect 探针新增 `net_blacklist_ip/port` map + `bpf_send_signal(9)` 内核态阻断 |
+| 抑制器状态跨重启 | Suppressor.SaveState/LoadState 持久化 + Agent 启动/Shutdown 自动加载/保存 |
+| 无管理认证 | admin token (HMAC-SHA256) + edrctl admin 命令组 |
+| Bash 绕过 fanotify | Bash TTY 分流：无 TTY 的 shell 走完整策略评估 |
+| 路径匹配可被 symlink 绕过 | fanotify inode 匹配：设备+inode 替代路径字符串 |
+| sys_process_vm_writev 内存攻击 | selfprotect kprobe 阻断 + 反杀 |
+| sys_init/delete_module 仅检测不阻断 | bpf_guard kprobe 阻断（复用 bpf_guard_enabled 开关） |
+| syscall table 完整性无检测 | kallsyms 地址校验：8 个关键 syscall vs .text 段 |
+| 网络连接隐藏无检测 | BPF SeenAddrs vs /proc/net/tcp 跨源地址对比 |
+| Agent 无对等守护 | 双守护进程：ForkExec guardian + 互心跳 |
+| systemctl stop 可停 agent | KillMode=none + ExecStop=/bin/true + BPF selfprotect |
 
 ### v0.6 已解决边界
 
