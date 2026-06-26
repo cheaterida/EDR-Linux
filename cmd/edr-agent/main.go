@@ -461,10 +461,19 @@ func main() {
 				{"/var/lib/edr", "edr-data-dir"},
 				{"/var/log/edr", "edr-log-dir"},
 				{fmt.Sprintf("/proc/%d/mem", agentPID), "agent-proc-mem"},
+				{fmt.Sprintf("/proc/%d/oom_score_adj", agentPID), "agent-oom-score"},
 			}
 			for _, pf := range protectFiles {
 				if err := fp.ProtectFile(pf.path, pf.desc); err != nil {
 					fmt.Fprintf(os.Stderr, "edr-agent: fanotify ProtectFile(%s): %v\n", pf.path, err)
+				}
+			}
+
+			// v0.9.1: protect agent's cgroup.freeze against
+			// cgroup freezer attacks (bypasses security_task_kill).
+			for _, cgPath := range readAgentCgroupFreezePaths() {
+				if err := fp.ProtectFile(cgPath, "agent-cgroup-freeze"); err != nil {
+					fmt.Fprintf(os.Stderr, "edr-agent: fanotify ProtectFile(%s): %v\n", cgPath, err)
 				}
 			}
 			fp.Start()
@@ -1038,4 +1047,33 @@ func guardian(agentPID int, runDir string) {
 			os.Exit(1)
 		}
 	}
+}
+
+// readAgentCgroupFreezePaths reads /proc/self/cgroup and returns
+// paths to cgroup.freeze files for all cgroups the agent belongs to.
+// v0.9.1: cgroup freezer protection.
+func readAgentCgroupFreezePaths() []string {
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		cgPath := strings.TrimSpace(parts[2])
+		if cgPath == "" || cgPath == "/" {
+			continue
+		}
+		if seen[cgPath] {
+			continue
+		}
+		seen[cgPath] = true
+		paths = append(paths, "/sys/fs/cgroup"+cgPath+"/cgroup.freeze")
+	}
+	return paths
+}
 }

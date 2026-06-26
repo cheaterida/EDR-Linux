@@ -7,6 +7,7 @@
 // Output: ring buffer event of struct edr_event with type=1.
 
 #include "common.bpf.h"
+#include <bpf/bpf_core_read.h>
 
 char _license[] SEC("license") = "GPL";
 
@@ -64,6 +65,24 @@ int handle_exec(struct trace_event_raw_sched_process_exec *ctx)
 	}
 
 	bpf_ringbuf_submit(e, 0);
+
+	// v0.9: kworker forgery detection.
+	// Check if comm matches kernel thread pattern but PPID != 2.
+	// Tag the event's _reserved with 0x464F5247 ("FORG") for
+	// Go-side forgery classification.
+	if ((e->comm[0] == 'k' && e->comm[1] == 'w' && e->comm[2] == 'o' &&
+	     e->comm[3] == 'r' && e->comm[4] == 'k' && e->comm[5] == 'e') ||
+	    (e->comm[0] == 'k' && e->comm[1] == 's' && e->comm[2] == 'o') ||
+	    (e->comm[0] == 'k' && e->comm[1] == 't' && e->comm[2] == 'h') ||
+	    (e->comm[0] == 'm' && e->comm[1] == 'i' && e->comm[2] == 'g') ||
+	    (e->comm[0] == 'w' && e->comm[1] == 'a' && e->comm[2] == 't') ||
+	    (e->comm[0] == 'r' && e->comm[1] == 'c' && e->comm[2] == 'u')) {
+		struct task_struct *task = (void *)bpf_get_current_task();
+		__u32 ppid = BPF_CORE_READ(task, real_parent, pid);
+		if (ppid != 2) {
+			e->_reserved = 0x464F5247; // "FORG"
+		}
+	}
 
 	return 0;
 }

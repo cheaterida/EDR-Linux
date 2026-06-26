@@ -105,5 +105,15 @@
   "admin_auth": {
     "admin_key_path": "/var/lib/edr/admin.key"
   },
+  "cpu_limit": {
+    "enabled": true,
+    "threshold": 80,
+    "interval_sec": 30,
+    "action": "kill",
+    "whitelist": [
+      "java", "postgres", "redis-server", "nginx", "sshd",
+      "systemd", "edr-agent", "edrctl"
+    ]
+  },
   "webhooks": []
 }

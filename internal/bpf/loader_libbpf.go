@@ -697,6 +697,22 @@ static int edr_net_bl_port_clear(struct edr_loader *l)
 	}
 	return 0;
 }
+
+// edr_map_read_u32 reads a u32 value from a BPF map fd at key=0.
+// Returns 0 on success, -1 on failure.
+static int edr_map_read_u32(int map_fd, __u32 *val) {
+	if (map_fd < 0) return -1;
+	__u32 key = 0;
+	return bpf_map_lookup_elem(map_fd, &key, val);
+}
+
+// edr_read_heartbeat reads the agent_heartbeat u64 from the BPF object.
+static int edr_read_heartbeat(struct edr_loader *l, __u64 *val) {
+	int fd = bpf_object__find_map_fd_by_name(l->obj, "agent_heartbeat");
+	if (fd < 0) return -1;
+	__u32 key = 0;
+	return bpf_map_lookup_elem(fd, &key, val);
+}
 */
 import "C"
 
@@ -819,6 +835,38 @@ func (l *libbpfLoader) SetAgentPID(pid uint32) error {
 		return fmt.Errorf("bpf: edr_set_agent_pid rc=%d", int(rc))
 	}
 	return nil
+}
+
+// ReadAgentPID reads the current value from the agent_pid BPF map.
+// Returns the stored PID or an error if the map cannot be read.
+func (l *libbpfLoader) ReadAgentPID() (uint32, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.handle == nil || l.closed.Load() {
+		return 0, ErrNotLoaded
+	}
+	var val C.__u32
+	rc := C.edr_map_read_u32(l.handle.agent_pid_fd, &val)
+	if rc != 0 {
+		return 0, errors.New("bpf: read agent_pid map failed")
+	}
+	return uint32(val), nil
+}
+
+// ReadHeartbeat reads the current heartbeat timestamp from the
+// agent_heartbeat BPF map.
+func (l *libbpfLoader) ReadHeartbeat() (uint64, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.handle == nil || l.closed.Load() {
+		return 0, ErrNotLoaded
+	}
+	var val C.__u64
+	rc := C.edr_read_heartbeat(l.handle, &val)
+	if rc != 0 {
+		return 0, errors.New("bpf: read heartbeat map failed")
+	}
+	return uint64(val), nil
 }
 
 // BlacklistAdd inserts a comm into the blacklist_comm BPF map.

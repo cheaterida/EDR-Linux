@@ -598,6 +598,12 @@ func trustedServiceProcess(cfg Config, proc Process) bool {
 }
 
 func kernelThreadProcess(proc Process) bool {
+	// v0.9: Hardened — PPID MUST be 2 (kthreadd) for kernel threads.
+	// PPID 0 or 1 is no longer accepted, as these can be reached by
+	// user processes (reparenting to init after parent death).
+	if proc.PPID != 2 {
+		return false
+	}
 	if strings.TrimSpace(proc.TTY) != "" {
 		return false
 	}
@@ -607,7 +613,7 @@ func kernelThreadProcess(proc Process) bool {
 	if strings.TrimSpace(proc.Cmdline) != "" {
 		return false
 	}
-	return proc.PPID == 0 || proc.PPID == 2
+	return true
 }
 
 func inSet(v string, list []string) bool {

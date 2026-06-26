@@ -1,4 +1,4 @@
-# EDR 架构图（用户友好版）
+# EDR 架构图
 
 > 适用版本：**v0.7 ops-audit + rootkit** — 在 v0.6+ 基础上完成 rootkit 检测补强（LKM/eBPF 操作监控 + /proc vs BPF 跨源校验）和运维审计可用性提升（edrctl report generate、事件归并、Web 仪表盘移除）
 > 阅读时长：约 30 分钟

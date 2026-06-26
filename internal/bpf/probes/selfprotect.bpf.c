@@ -17,21 +17,36 @@
 
 #define EPERM 1
 
-static __always_inline int is_protected_signal(__u32 sig)
+// update_heartbeat writes the current timestamp to the heartbeat map
+// so the Go-side integrity sentinel can detect when BPF probes are
+// detached or disabled. v0.9 self-healing integrity sentinel.
+static __always_inline void update_heartbeat(void)
 {
-	return sig == 1 || sig == 2 || sig == 3 || sig == 9 || sig == 15;
+	__u32 key = 0;
+	__u64 now = bpf_ktime_get_ns();
+	bpf_map_update_elem(&agent_heartbeat, &key, &now, BPF_ANY);
 }
 
-// should_kill_caller decides whether to kill the attacking process.
-// SIGKILL(9), SIGHUP(1), SIGINT(2), SIGQUIT(3) — always kill: there
-// is no legitimate reason to send these to the agent.
-// SIGTERM(15) — kill unless the caller is systemd (PID 1), because
-// systemd sends SIGTERM during legitimate system shutdown/reboot.
+// v0.9: signal white-list removed. ALL external signals to the agent
+// are blocked — including SIGSTOP(19), SIGCONT(18), SIGTSTP(20).
+// Primary enforcement is in LSM (lsm_selfprotect.bpf.c); this kprobe
+// layer provides telemetry + retroactive response.
+//
+// should_kill_caller now covers ALL signals uniformly: SIGTERM from
+// systemd (PID 1) is excluded, everything else triggers SIGKILL to
+// the attacker. This is consistent with v0.9's audit-first philosophy
+// — the LSM already denied the operation; counter-kill here is the
+// retroactive enforcement layer.
 static __always_inline int should_kill_caller(__u32 sig, __u32 current_pid)
 {
-	if (sig == 9)  return 1; // SIGKILL: always malicious
-	if (sig == 15) return current_pid != 1; // SIGTERM: kill unless systemd
-	return (sig == 1 || sig == 2 || sig == 3); // HUP/INT/QUIT: always malicious
+	if (current_pid == 1) {
+		// systemd is the only legitimate signal source (shutdown).
+		// SIGTERM is allowed through; anything else from systemd
+		// is blocked but NOT counter-killed (don't kill init).
+		if (sig == 15) return 0;
+		return 0; // block without killing systemd
+	}
+	return 1; // all signals from non-systemd → always kill
 }
 
 char _license[] SEC("license") = "GPL";
@@ -47,9 +62,7 @@ int handle_kill(struct pt_regs *ctx)
 	bpf_probe_read_kernel(&target_pid, sizeof(target_pid), &kregs->di);
 	bpf_probe_read_kernel(&sig, sizeof(sig), &kregs->si);
 
-	if (!is_protected_signal(sig))
-		return 0;
-
+	// v0.9: all signals blocked — no more white-list skip.
 	__u32 key = 0;
 	__u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
 	if (!agent || target_pid != *agent)
@@ -60,6 +73,8 @@ int handle_kill(struct pt_regs *ctx)
 	__u32 current_pid = id >> 32;
 	if (current_pid == *agent)
 		return 0;
+
+	update_heartbeat();
 
 	// Enforce synchronously: make the kill syscall fail.
 	bpf_override_return(ctx, -EPERM);
@@ -98,9 +113,7 @@ int handle_tgkill(struct pt_regs *ctx)
 	bpf_probe_read_kernel(&target_tid,  sizeof(target_tid),  &kregs->si);
 	bpf_probe_read_kernel(&sig, sizeof(sig), &kregs->dx);
 
-	if (!is_protected_signal(sig))
-		return 0;
-
+	// v0.9: all signals blocked.
 	__u32 key = 0;
 	__u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
 	if (!agent || (target_tgid != *agent && target_tid != *agent))
@@ -111,6 +124,8 @@ int handle_tgkill(struct pt_regs *ctx)
 	__u32 current_pid = id >> 32;
 	if (current_pid == *agent)
 		return 0;
+
+	update_heartbeat();
 
 	// Enforce synchronously.
 	bpf_override_return(ctx, -EPERM);
@@ -157,6 +172,8 @@ int handle_ptrace(struct pt_regs *ctx)
 	if (current_pid == *agent)
 		return 0;
 
+	update_heartbeat();
+
 	// Enforce synchronously, then terminate the ptrace attacker.
 	bpf_override_return(ctx, -EPERM);
 	bpf_send_signal(9); // SIGKILL
@@ -189,9 +206,7 @@ int handle_pidfd_send_signal(struct pt_regs *ctx)
 	__u32 sig;
 	bpf_probe_read_kernel(&sig, sizeof(sig), &kregs->si);
 
-	if (!is_protected_signal(sig))
-		return 0;
-
+	// v0.9: all signals blocked.
 	__u32 key = 0;
 	__u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
 	if (!agent)
@@ -201,6 +216,8 @@ int handle_pidfd_send_signal(struct pt_regs *ctx)
 	__u32 current_pid = id >> 32;
 	if (current_pid == *agent)
 		return 0;
+
+	update_heartbeat();
 
 	bpf_override_return(ctx, -EPERM);
 	if (should_kill_caller(sig, current_pid)) {
@@ -231,6 +248,8 @@ int handle_process_vm_writev(struct pt_regs *ctx)
 	if (current_pid == *agent)
 		return 0;
 
+	update_heartbeat();
+
 	// process_vm_writev targeting the agent process is always hostile.
 	// Block the syscall and terminate the attacker.
 	bpf_override_return(ctx, -EPERM);
@@ -250,6 +269,108 @@ int handle_process_vm_writev(struct pt_regs *ctx)
 	e->uid  = (__u32)bpf_get_current_uid_gid();
 	bpf_get_current_comm(&e->comm, sizeof(e->comm));
 	__builtin_memcpy(e->filename, "process_vm_writev", 18);
+
+	bpf_ringbuf_submit(e, 0);
+	return 0;
+}
+
+// __x64_sys_process_vm_readv(struct pt_regs *regs)
+// regs->di = pid (target process to read from)
+// Blocks direct memory read attacks on the agent process — v0.9.
+// process_vm_readv() allows reading another process's memory
+// without ptrace, enabling information disclosure and credential
+// theft from the EDR agent.
+SEC("kprobe/__x64_sys_process_vm_readv")
+int handle_process_vm_readv(struct pt_regs *ctx)
+{
+	struct pt_regs *kregs = (struct pt_regs *)ctx->di;
+	__u32 target_pid;
+	bpf_probe_read_kernel(&target_pid, sizeof(target_pid), &kregs->di);
+
+	__u32 key = 0;
+	__u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
+	if (!agent || target_pid != *agent)
+		return 0;
+
+	__u64 id = bpf_get_current_pid_tgid();
+	__u32 current_pid = id >> 32;
+	if (current_pid == *agent)
+		return 0;
+
+	update_heartbeat();
+
+	bpf_override_return(ctx, -EPERM);
+	bpf_send_signal(9);
+
+	struct edr_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+	if (!e)
+		return 0;
+
+	__builtin_memset(e, 0, sizeof(*e));
+	e->type = EDR_EVENT_SELFPROTECT;
+	e->timestamp_ns = bpf_ktime_get_ns();
+	e->pid  = current_pid;
+	e->ppid = target_pid;
+	e->tgid = (__u32)id;
+	e->uid  = (__u32)bpf_get_current_uid_gid();
+	bpf_get_current_comm(&e->comm, sizeof(e->comm));
+	__builtin_memcpy(e->filename, "process_vm_readv", 17);
+
+	bpf_ringbuf_submit(e, 0);
+	return 0;
+}
+
+// v0.9.1: __x64_sys_prctl audit — detects prctl-based evasion.
+// Prctl can manipulate process identity (PR_SET_MM, PR_SET_NAME),
+// install seccomp filters, or set subreaper flags.
+// Detection only — no override, no kill. Enforcement via LSM
+// fmod_ret on security_task_prctl is a future step.
+#define PR_SET_PDEATHSIG    1
+#define PR_SET_MM           6
+#define PR_SET_NAME         15
+#define PR_SET_SECCOMP      22
+#define PR_SET_NO_NEW_PRIVS 36
+#define PR_SET_CHILD_SUBREAPER 39
+
+SEC("kprobe/__x64_sys_prctl")
+int handle_prctl(struct pt_regs *ctx)
+{
+	struct pt_regs *kregs = (struct pt_regs *)ctx->di;
+	__u32 option;
+	bpf_probe_read_kernel(&option, sizeof(option), &kregs->di);
+
+	switch (option) {
+	case PR_SET_MM:
+	case PR_SET_NAME:
+	case PR_SET_SECCOMP:
+	case PR_SET_NO_NEW_PRIVS:
+	case PR_SET_CHILD_SUBREAPER:
+		break;
+	default:
+		return 0;
+	}
+
+	__u32 key = 0;
+	__u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
+	__u64 id = bpf_get_current_pid_tgid();
+	__u32 current_pid = id >> 32;
+
+	if (agent && current_pid == *agent)
+		return 0;
+
+	struct edr_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+	if (!e)
+		return 0;
+
+	__builtin_memset(e, 0, sizeof(*e));
+	e->type = EDR_EVENT_SELFPROTECT;
+	e->timestamp_ns = bpf_ktime_get_ns();
+	e->pid  = current_pid;
+	e->tgid = (__u32)id;
+	e->uid  = (__u32)bpf_get_current_uid_gid();
+	e->_reserved = option;
+	bpf_get_current_comm(&e->comm, sizeof(e->comm));
+	__builtin_memcpy(e->filename, "sys_prctl", 10);
 
 	bpf_ringbuf_submit(e, 0);
 	return 0;

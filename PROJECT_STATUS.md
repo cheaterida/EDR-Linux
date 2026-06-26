@@ -2,7 +2,7 @@
 
 ## 1. 项目定位
 
-本项目是一个面向 Ubuntu 22.04 的内网实战 Linux EDR。当前版本 **v0.8.0**，在 v0.7.6 稳固基础上推进安全强化：管理认证（admin token）、策略硬化（50+ 规则 alert→block）、CLI 研判工作台（investigate/pstree/audit）、自保护加固（process_vm_writev 阻断、inode 识别、bash TTY 分流、双守护进程、module kprobe 阻断、网络隐藏/Syscall 完整性检测）。
+本项目是一个面向 Ubuntu 22.04 的内网实战 Linux EDR。当前版本 **v0.9.1**，在 v0.9.0 基础上完成防护加固与纵深防御：cgroup freezer fanotify 防护、prctl 审计、process_vm_readv 阻断、oom_score_adj 保护、BPF 对象运行时完整性校验。
 
 **版本历史**：
 - `v0.1`：基础 ring3 闭环（采集 / 策略 / 响应 / 控制面 / 取证 / 基础安全加固）
@@ -17,6 +17,8 @@
 - **`v0.7`**：双轨推进 — rootkit 检测补强 + 运维审计可用性
 - **`v0.7.6`**：protection-path closure — ATT002 ring0 fast-path 斩杀闭环、split/full-stack 离线替换稳定性、SELF001 收紧
 - **`v0.8`**：security-hardening — admin token 加密管理、策略硬化、CLI 研判、自保护加固
+- **`v0.9`**：self-protection-hardening — 基于 Aegis 攻防实战的 12 项自保护强化
+- **`v0.9.1`**：defense-hardening — cgroup freezer 防护 / prctl 审计 / BPF 对象完整性 / process_vm_readv 阻断
 
 ## 1.1 v0.7.6 对应更新
 
@@ -413,6 +415,8 @@
 | instrument | `instrument.bpf.c` | `kprobe/__x64_sys_mmap` | 尽力 | 可疑库加载检测 |
 | lsm_selfprotect | `lsm_selfprotect.bpf.c` | `lsm/task_kill`, `lsm/ptrace_access_check` | 必须 | **v0.6 升级为主阻断路径** |
 | privesc | `privesc.bpf.c` | `tp/syscalls/sys_enter_{setuid,setgid,capset}` | 尽力 | **v0.6 新增** 提权检测 |
+| `process_vm_readv` | `selfprotect.bpf.c` | `kprobe/__x64_sys_process_vm_readv` | 尽力 | **v0.9 新增** 内存读取阻断 |
+| `lsm_bpf_guard` | `lsm_bpf_guard.bpf.c` | `fmod_ret/security_bpf` | 必须 | **v0.9 新增** BPF 自保护 (防 bpftool link detach) |
 | module | `module.bpf.c` | `tp/syscalls/sys_enter_{init,finit,delete}_module` | 尽力 | **v0.7 新增** LKM rootkit 检测 |
 | bpfop | `bpfop.bpf.c` | `tp/syscalls/sys_enter_bpf` | 尽力 | **v0.7 新增** eBPF rootkit 检测 |
 
@@ -641,15 +645,12 @@ sudo /home/lcz/edr_test/verify_shutdown_boundary.sh
 
 | 方向 | 优先级 | 目标 | 说明 |
 |---|---|---|---|
-| rootkit 检测 enforce 模式实测 | 🟡 P0 | v0.7 演习前 | 在演习目标机上以 BPF enforce 模式跑全流程 |
-| 网络隐藏检测 | 🟡 P1 | v0.8 | ConnTracker vs /proc/net/tcp 跨源对比 |
-| 文件隐藏检测 | 🟡 P2 | v0.8 | getdents 跨视图对比 |
-| syscall table hook 检测 | 🟢 P3 | v0.8+ | 行为-日志矛盾检测 |
-| 网络 ring0 阻断 | 🟡 P1 | v0.8 | connect 探针加 bpf_send_signal |
-| PID namespace 验证 | 🟡 P2 | v0.8 | /proc 解析时验证 PID 属于当前 namespace (S22) |
-| 抑制器状态持久化 | 🟢 P3 | v0.8 | 状态文件跨重启恢复 |
-| 规则 DSL 升级 | 🟢 P3 | v0.8+ | Sigma/YARA 规则支持 |
-| 远程控制台 | 🟢 P3 | v0.9+ | 中心化管理 + gRPC + 多节点
+| `security_bpf_prog` + `security_bpf_map` fmod_ret 细分 | 🟡 P1 | v0.9.1+ | 在现有 `security_bpf` 基础上增加 prog 和 map 级别的细分拦截 |
+| cgroup freezer 防护 | 🟡 P1 | v0.9.1+ | 攻击者用 cgroup.freeze 冻结 EDR 进程 |
+| `security_task_prctl` 监控 | 🟡 P2 | v0.9.2+ | prctl 绕过检测 |
+| 完整 BPF 对象注册 + 运行时完整性 | 🟢 P3 | v0.9.2+ | `edr_bpf_obj_ids` map 实现"自己的 BPF 识别自己的 BPF" |
+| 抑制器状态持久化 | 🟢 P3 | v0.9.2+ | 状态文件跨重启恢复 |
+| 远程控制台 | 🟢 P3 | v0.10+ | 中心化管理 + gRPC + 多节点
 
 ## 11. 实现矩阵
 
@@ -698,6 +699,12 @@ sudo /home/lcz/edr_test/verify_shutdown_boundary.sh
 | 业务连续性 | `internal/collector/collector.go` | 关键进程存活 + 服务配置完整性 | **v0.6** |
 | 连接追踪 | `internal/collector/conntrack.go` | 滑动窗口 + beacon 检测 | v0.5 |
 | /proc 富化 | `internal/collector/collector.go` | PPID/ParentName/EUID/ContainerID | v0.5 |
+| 完整性哨兵 + SOS | `internal/integrity/{self_check,sos}.go` | 5 维自检 + Ed25519/HMAC 双签名临终告警 | **v0.9** |
+| 进程伪装检测 | `internal/integrity/process_forgery.go` | kworker 伪装 BPF FORG + Go 交叉校验 | **v0.9** |
+| cgroup freezer 防护 | `cmd/edr-agent/main.go` | fanotify mark cgroup.freeze | **v0.9.1** |
+| process_vm_readv 阻断 | `selfprotect.bpf.c` | kprobe override | **v0.9.1** |
+| prctl 审计 | `selfprotect.bpf.c` | PR_SET_MM/NAME/SECCOMP/SUBREAPER 检测 | **v0.9.1** |
+| BPF 对象完整性 | `loader_libbpf.go` | ReadAgentPID + ReadHeartbeat 运行时校验 | **v0.9.1** |
 
 ### 11.2 技术栈
 
@@ -899,3 +906,107 @@ Agent 通过 `ForkExec` 启动轻量 guardian 子进程。双方通过 `/run/edr
 | 网络隐藏检测 | `internal/rootkit/detector.go` | SeenAddrs vs /proc/net/tcp |
 | Syscall 完整性 | `internal/rootkit/detector.go` | kallsyms .text 段校验 |
 | BPF Map 扩展 | `internal/bpf/probes/common.bpf.h` | net_blacklist_enabled/ip/port |
+
+## 13. v0.9 自保护强化
+
+在 v0.8 基础上，基于对阿里云 Aegis v12.93 的完整攻防实战研究（见 `research/aliyun-edr/`），完成 11 项自保护强化。攻破 Aegis 的完整路径（SIGSTOP → bpftool link detach → kill -9）已被系统性封堵。
+
+### 13.1 核心变更
+
+| # | 变更 | 文件 | 防护目标 |
+|---|------|------|------|
+| 1 | **SIGSTOP/SIGCONT 全信号拦截** | `lsm_selfprotect.bpf.c` | 删除信号白名单，全信号 `-EPERM`，补上 Aegis 攻破的第一步 |
+| 2 | **SIGSTOP/SIGCONT kprobe 同步** | `selfprotect.bpf.c` | 删除 `is_protected_signal()`，6 个 handler 全信号覆盖 |
+| 3 | **`security_bpf` LSM fmod_ret** | `lsm_bpf_guard.bpf.c` **(新)** | 防 `bpftool link detach` / `prog detach` / `map update` — Aegis 致命缺口 |
+| 4 | **BPF 自排除 PID 匹配** | `bpf_guard.bpf.c` | `comm == "edr-agent"` → `agent_pid` map 匹配，防 comm 伪造绕过 |
+| 5 | **LSM task_kill 审计输出** | `lsm_selfprotect.bpf.c` | ringbuf 输出阻断事件，补齐 LSM 无声的短板 |
+| 6 | **process_vm_readv 阻断** | `selfprotect.bpf.c` **(新 handler)** | 对标已有的 `vm_writev`，防跨进程内存读取 |
+| 7 | **oom_score_adj 保护** | `cmd/edr-agent/main.go` | fanotify mark `/proc/PID/oom_score_adj`，防 OOM 优先级篡改 |
+| 8 | **进程伪装检测** | `integrity/process_forgery.go` **(新)** | 检测 `exec -a "kworker/*"` 伪装内核线程（红蓝对抗实战绕过） |
+| 9 | **BPF 侧 kworker 伪装标记** | `exec.bpf.c` | PPID != 2 时 tag `0x464F5247` ("FORG") |
+| 10 | **完整性哨兵** | `integrity/self_check.go` **(新)** | 四维自检：BPF heartbeat / 二进制 hash / 安装目录 / fanotify fd |
+| 11 | **SOS 临终告警** | `integrity/sos.go` **(新)** | 检测到拆卸时发出 Ed25519 + HMAC 双签名告警，接受死亡但留证据 |
+| 12 | **kernelThreadProcess 增强** | `rootsession/manager.go` | PPID=0 不再接受，只认 PPID=2 (kthreadd) |
+
+### 13.2 BPF 探针新增
+
+| 探针 | 文件 | Hook | 防护目标 |
+|------|------|------|------|
+| `lsm_bpf_guard` | `lsm_bpf_guard.bpf.c` | `fmod_ret/security_bpf` | 拦截 BPF_LINK_DETACH / BPF_PROG_DETACH / BPF_MAP_UPDATE_ELEM |
+| `handle_process_vm_readv` | `selfprotect.bpf.c` | `kprobe/__x64_sys_process_vm_readv` | 阻断跨进程内存读取 |
+
+总探针数: 12 → **14 源码 / 15 类事件**
+
+### 13.3 自保护能力覆盖（v0.9 完成态）
+
+```
+kill -9/-15/-1/-2          → LSM task_kill + kprobe override    ✅
+kill -19 (SIGSTOP)         → LSM task_kill                       ✅ v0.9
+kill -18 (SIGCONT)         → LSM task_kill                       ✅ v0.9
+ptrace                     → LSM ptrace_access_check + kprobe    ✅
+process_vm_writev          → kprobe override                     ✅ v0.8
+process_vm_readv           → kprobe override                     ✅ v0.9
+/proc/PID/mem r/w          → fanotify FAN_OPEN_PERM              ✅ v0.9
+oom_score_adj tamper       → fanotify FAN_OPEN_PERM              ✅ v0.9
+bpftool link detach        → LSM security_bpf                    ✅ v0.9
+bpftool prog detach        → LSM security_bpf                    ✅ v0.9
+bpf(MAP_UPDATE_ELEM)       → LSM security_bpf + bpf_guard        ✅ v0.9
+comm "edr-agent" 伪造      → agent_pid map 匹配                 ✅ v0.9
+kworker 伪装               → BPF FORG tag + Go 检测              ✅ v0.9
+自身被拆解检测              → 完整性哨兵 + SOS 临终告警            ✅ v0.9
+```
+
+### 13.4 版本对比
+
+| 维度 | v0.8 | v0.9 |
+|------|------|------|
+| BPF 探针 | 12 源码 | 14 源码 (+ `lsm_bpf_guard`, + `process_vm_readv`) |
+| 信号防护 | {1,2,3,9,15} 白名单 | 全信号 (`-EPERM`) 无白名单 |
+| BPF 自保护 | kprobe override (comm 自排除) | LSM fmod_ret (PID 自排除) |
+| 进程伪装检测 | ❌ | BPF FORG tag + Go 交叉校验 |
+| 内存读取防护 | ❌ (仅写) | `process_vm_readv` + `/proc/PID/mem` 双保护 |
+| 被拆卸检测 | ❌ | 完整性哨兵 + SOS 双签名告警 |
+| 研究基础 | 自身设计迭代 | 基于 Aegis v12.93 实攻反馈 (详见 `research/aliyun-edr/`) |
+
+## 14. v0.9.1 防护加固与纵深防御
+
+在 v0.9 自保护核心修补基础上，完成 Phase 2+3 的全部计划项。
+
+### 14.1 核心变更
+
+| # | 变更 | 文件 | 防护目标 |
+|---|------|------|------|
+| 1 | **cgroup freezer 防护** | `cmd/edr-agent/main.go` | fanotify mark `/sys/fs/cgroup/<path>/cgroup.freeze`，防止攻击者用 cgroup 冻结 EDR 进程 |
+| 2 | **oom_score_adj 保护** | `cmd/edr-agent/main.go` | fanotify mark `/proc/PID/oom_score_adj` |
+| 3 | **process_vm_readv 阻断** | `selfprotect.bpf.c` **(新 handler)** | kprobe 阻断 `__x64_sys_process_vm_readv`，防跨进程内存读取 |
+| 4 | **prctl 审计** | `selfprotect.bpf.c` **(新 handler)** | kprobe 审计 `PR_SET_MM/NAME/SECCOMP/SUBREAPER` 五类可疑 prctl |
+| 5 | **BPF 对象运行时完整性** | `loader_libbpf.go` | `ReadAgentPID` + `ReadHeartbeat` — 从 BPF map 直接读取，验证未被清零 |
+| 6 | **checkBPFMaps 自检** | `integrity/self_check.go` | 周期性验证 `agent_pid` map 值有效 |
+
+### 14.2 自保护能力覆盖（v0.9.1 完成态）
+
+```
+kill 信号全系列             → LSM task_kill + kprobe override    ✅
+SIGSTOP/SIGCONT             → LSM task_kill                       ✅ v0.9
+ptrace                      → LSM ptrace_access_check + kprobe    ✅
+process_vm_writev/readv     → kprobe override                     ✅ v0.9.1
+/proc/PID/mem r/w           → fanotify FAN_OPEN_PERM              ✅
+oom_score_adj tamper        → fanotify FAN_OPEN_PERM              ✅ v0.9.1
+cgroup.freeze               → fanotify FAN_OPEN_PERM              ✅ v0.9.1
+bpftool link/prog detach    → LSM security_bpf                    ✅ v0.9
+bpf(MAP_UPDATE_ELEM)        → LSM security_bpf + bpf_guard        ✅ v0.9
+comm 伪造                   → agent_pid map 匹配                 ✅ v0.9
+kworker 伪装                → BPF FORG tag + Go 检测              ✅ v0.9
+prctl 逃逸                  → kprobe 审计                         ✅ v0.9.1
+agent_pid map 清零          → checkBPFMaps 运行时检测              ✅ v0.9.1
+自身被拆解                   → 完整性哨兵 + SOS 双签名告警          ✅ v0.9
+```
+
+### 14.3 版本对比
+
+| 维度 | v0.9 | v0.9.1 |
+|------|------|--------|
+| fanotify 保护路径 | 8 个 | 10 个 (+ cgroup.freeze + oom_score_adj) |
+| selfprotect.bpf.c handlers | 6 个 | 8 个 (+ vm_readv + prctl) |
+| 完整性哨兵检查项 | 4 维 | 5 维 (+ bpf_maps) |
+| BPF 自我感知 | heartbeat 心跳 | heartbeat + agent_pid 双重验证 |

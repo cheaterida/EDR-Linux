@@ -317,16 +317,31 @@
       }
     },
     {
-      "id": "SELF001-agent-binary-access",
-      "description": "非授权访问 EDR 代理二进制文件",
+      "id": "SELF007-edr-socket-tamper",
+      "description": "非授权访问 /run/edr-agent.sock — 防止 Unix socket 替换攻击",
       "category": "file",
       "severity": "critical",
       "decision": "block",
       "action": "fanotify_deny",
       "match": {
-        "file_path": "/opt/edr/edr-agent",
+        "file_path": "/run/edr-agent.sock",
         "file_op": "open"
       }
+    },
+    {
+      "id": "CPU-001-cpu-limit-exceeded",
+      "description": "进程 CPU 占用异常超标 — 可能的挖矿/fork炸弹/失控进程",
+      "enabled": true,
+      "category": "process",
+      "severity": "high",
+      "decision": "block",
+      "action": "kill",
+      "match": {},
+      "priority": 30,
+      "effect": [
+        "audit",
+        "response"
+      ]
     },
     {
       "id": "B001-shadow-access",

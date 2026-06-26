@@ -136,3 +136,15 @@ struct {
 	__type(key, __u32);
 	__type(value, __u8);
 } net_blacklist_port SEC(".maps") __attribute__((weak));
+
+// agent_heartbeat is a single-entry ARRAY updated every time a
+// self-protection hook fires. The Go-side integrity sentinel reads
+// this map periodically; a stale timestamp means the BPF probes
+// have been detached or disabled — a critical compromise signal.
+// v0.9: self-healing integrity sentinel.
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, __u64);
+} agent_heartbeat SEC(".maps") __attribute__((weak));

@@ -1,19 +1,15 @@
 // internal/bpf/probes/bpf_guard.bpf.c
-// v0.16: Kprobe on __x64_sys_bpf to block unauthorized BPF map writes.
-//
-// handle_bpf_write — kprobe/__x64_sys_bpf
+// v0.9: kprobe on __x64_sys_bpf to block unauthorized BPF map writes.
+// Self-exclusion upgraded from comm to agent_pid map — comm can be
+// forged via exec -a "edr-agent". LSM fmod_ret (lsm_bpf_guard.bpf.c)
+// is the primary enforcement layer; this kprobe provides telemetry.
 //
 // Attackers who obtain root can call bpf(BPF_MAP_UPDATE_ELEM, ...)
 // directly (no bpftool needed) to zero EDR's agent_pid map and then
-// kill the agent. This probe blocks the write at ring0 before the
-// kernel processes it.
+// kill the agent. This probe blocks the write at ring0.
 //
 // Controlled by bpf_guard_enabled map — Phase 1/2: disabled (monitor only),
 // Phase 3/4: enabled (hard block).
-//
-// WITH CONFIG_ARCH_HAS_SYSCALL_WRAPPER: __x64_sys_bpf receives a single
-// pointer to pt_regs. Real arguments are inside kregs->di (cmd),
-// kregs->si (uattr).
 
 #include "common.bpf.h"
 
@@ -22,6 +18,18 @@ char _license[] SEC("license") = "GPL";
 #define BPF_MAP_UPDATE_ELEM 2
 #define BPF_PROG_DETACH    8
 #define EPERM 1
+
+// is_agent checks whether the current task is the EDR agent.
+// Uses agent_pid map instead of comm — comm is forgeable.
+static __always_inline int is_agent(void)
+{
+    __u32 key = 0;
+    __u32 *agent = bpf_map_lookup_elem(&agent_pid, &key);
+    if (!agent)
+        return 0;
+    __u64 id = bpf_get_current_pid_tgid();
+    return (__u32)(id >> 32) == *agent;
+}
 
 // bpf_guard_enabled — single-entry ARRAY toggle. When set to non-zero,
 // the kprobe blocks BPF_MAP_UPDATE_ELEM and BPF_PROG_DETACH from
@@ -52,15 +60,11 @@ int handle_bpf_write(struct pt_regs *ctx)
     if (cmd != BPF_MAP_UPDATE_ELEM && cmd != BPF_PROG_DETACH)
         return 0;
 
-    // Skip self-operations (EDR agent updating its own maps).
-    char comm[16];
-    bpf_get_current_comm(&comm, sizeof(comm));
-    if (__builtin_memcmp(comm, "edr-agent", 9) == 0)
+    // Skip self-operations — agent_pid match (v0.9: was comm).
+    if (is_agent())
         return 0;
 
     // Block the bpf() syscall — return -EPERM to caller.
-    // bpf_send_signal(9) kills the attacker process for immediate
-    // response (same pattern as selfprotect.bpf.c).
     bpf_override_return(ctx, -EPERM);
     bpf_send_signal(9);
 
@@ -84,12 +88,12 @@ int handle_bpf_write(struct pt_regs *ctx)
     return 0;
 }
 
-// handle_init_module — kprobe/__x64_sys_init_module
+// handle_block_init_module — kprobe/__x64_sys_init_module
 // Blocks kernel module loading from non-edr-agent processes when
 // bpf_guard is enabled. Attackers may attempt to load a rootkit LKM
 // to disable EDR protections from kernel space.
 SEC("kprobe/__x64_sys_init_module")
-int handle_init_module(struct pt_regs *ctx)
+int handle_block_init_module(struct pt_regs *ctx)
 {
     __u32 key = 0;
     __u8 *enabled = bpf_map_lookup_elem(&bpf_guard_enabled, &key);
@@ -98,7 +102,12 @@ int handle_init_module(struct pt_regs *ctx)
 
     char comm[16];
     bpf_get_current_comm(&comm, sizeof(comm));
-    if (__builtin_memcmp(comm, "edr-agent", 9) == 0)
+
+    // v0.9: agent_pid match replaces comm check.
+    __u32 agent_key = 0;
+    __u32 *agent_val = bpf_map_lookup_elem(&agent_pid, &agent_key);
+    __u64 id_check = bpf_get_current_pid_tgid();
+    if (agent_val && (__u32)(id_check >> 32) == *agent_val)
         return 0;
 
     bpf_override_return(ctx, -EPERM);
@@ -123,21 +132,21 @@ int handle_init_module(struct pt_regs *ctx)
     return 0;
 }
 
-// handle_delete_module — kprobe/__x64_sys_delete_module
+// handle_block_delete_module — kprobe/__x64_sys_delete_module
 // Blocks kernel module unloading from non-edr-agent processes.
-// Attackers may try to unload EDR's BPF support infrastructure
-// or other security-critical kernel modules.
 SEC("kprobe/__x64_sys_delete_module")
-int handle_delete_module(struct pt_regs *ctx)
+int handle_block_delete_module(struct pt_regs *ctx)
 {
     __u32 key = 0;
     __u8 *enabled = bpf_map_lookup_elem(&bpf_guard_enabled, &key);
     if (!enabled || *enabled == 0)
         return 0;
 
-    char comm[16];
-    bpf_get_current_comm(&comm, sizeof(comm));
-    if (__builtin_memcmp(comm, "edr-agent", 9) == 0)
+    // v0.9: agent_pid match replaces comm check.
+    __u32 agent_key2 = 0;
+    __u32 *agent_val2 = bpf_map_lookup_elem(&agent_pid, &agent_key2);
+    __u64 id_check2 = bpf_get_current_pid_tgid();
+    if (agent_val2 && (__u32)(id_check2 >> 32) == *agent_val2)
         return 0;
 
     bpf_override_return(ctx, -EPERM);

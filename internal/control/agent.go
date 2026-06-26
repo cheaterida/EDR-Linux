@@ -15,6 +15,7 @@ import (
 	"edr/internal/bpf"
 	"edr/internal/collector"
 	"edr/internal/eventlog"
+	"edr/internal/integrity"
 	"edr/internal/policy"
 	"edr/internal/procutil"
 	"edr/internal/response"
@@ -55,6 +56,9 @@ type Agent struct {
 	Suppressor          *Suppressor
 	SelfProtectBlocks   uint64 // v0.6: self-protection block counter
 	RootkitDetector     *rootkit.Detector
+
+	// v0.9: integrity sentinel — detects when EDR is being dismantled.
+	SelfCheck *integrity.SelfCheck
 
 	mapFiller bpf.MapFiller // optional; set via SetMapFiller for BPF map hot-reload
 
@@ -459,6 +463,69 @@ func (a *Agent) CheckCriticalProcesses(names []string) {
 	}
 }
 
+// CheckCPULimits queries the CPULimitTracker for processes exceeding the
+// given threshold and applies the specified action (kill or process_suspend).
+// Whitelist entries are matched against process comm names.
+func (a *Agent) CheckCPULimits(tracker *collector.CPULimitTracker, threshold float64, action string, whitelist []string) {
+	if tracker == nil || threshold <= 0 {
+		return
+	}
+	highPIDs := tracker.HighCPU(threshold, whitelist)
+	if len(highPIDs) == 0 {
+		return
+	}
+	source := a.currentEventSource()
+	if source == nil {
+		return
+	}
+	snap, err := source.Snapshot(context.Background())
+	if err != nil {
+		return
+	}
+	pidToProc := make(map[int]*collector.Process, len(snap.Processes))
+	for i := range snap.Processes {
+		pidToProc[snap.Processes[i].PID] = &snap.Processes[i]
+	}
+	whitelistSet := make(map[string]bool, len(whitelist))
+	for _, w := range whitelist {
+		whitelistSet[w] = true
+	}
+	for _, pid := range highPIDs {
+		proc := pidToProc[pid]
+		if proc == nil || whitelistSet[proc.Name] {
+			continue
+		}
+		subject := map[string]any{
+			"pid": pid, "name": proc.Name, "path": proc.Path,
+			"cmdline": proc.Cmdline, "user": proc.User, "cpu_pct": threshold,
+		}
+		ruleID := "CPU-001-cpu-limit-exceeded"
+		key := DedupKey("process", ruleID, strconv.Itoa(pid), proc.StartTicks)
+		if !a.allowAndRecord("process", ruleID, key) {
+			continue
+		}
+		a.logEvent(eventlog.Event{
+			EventID:  fmt.Sprintf("cpu-limit-%d-%d", pid, time.Now().Unix()),
+			Category: "process", Severity: "high", Subject: subject,
+			Action: action, Decision: "block", RuleID: ruleID,
+		})
+		switch action {
+		case "kill":
+			a.Responder.Apply(response.Request{
+				PID: pid, ProcessName: proc.Name, ProcessPath: proc.Path,
+				StartTicks: proc.StartTicks, Action: "kill",
+				RuleID: ruleID, Severity: "high",
+			})
+		case "process_suspend":
+			a.Responder.Apply(response.Request{
+				PID: pid, ProcessName: proc.Name, ProcessPath: proc.Path,
+				StartTicks: proc.StartTicks, Action: "process_suspend",
+				RuleID: ruleID, Severity: "high",
+			})
+		}
+	}
+}
+
 // RecordSelfProtectBlock increments the self-protection block counter
 // and publishes a sensor_tamper event. Called from the fast-path when
 // LSM/kprobe self-protection intercepts an attack against the agent.
@@ -635,6 +702,13 @@ func (a *Agent) recordRuleHit(ruleID string) {
 	a.RuleHits[ruleID]++
 }
 
+// RecordRuleHit is the exported version of recordRuleHit for
+// use by external event sources (e.g. fanotify handler) that
+// evaluate policy rules outside the main RunOnce loop.
+func (a *Agent) RecordRuleHit(ruleID string) {
+	a.recordRuleHit(ruleID)
+}
+
 func (a *Agent) recordSuppressed(ruleID, reason string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -756,6 +830,12 @@ func (a *Agent) RunOnce(ctx context.Context) error {
 
 	if a.SuppressorStatePath != "" && a.Suppressor != nil {
 		_ = a.Suppressor.SaveState(a.SuppressorStatePath)
+	}
+
+	// v0.9: integrity sentinel — detect BPF detachment, binary
+	// tampering, install-dir deletion at every collection cycle.
+	if a.SelfCheck != nil {
+		a.SelfCheck.RunAll()
 	}
 
 	return nil
