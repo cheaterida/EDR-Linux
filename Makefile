@@ -17,6 +17,11 @@ export GOCACHE
 export GOMODCACHE
 export GOPATH
 
+# v0.9.1: reproducible builds via git tag versioning.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS  = -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
+
 # v0.2 eBPF toolchain — see DEV_IRON_RULES §R-CLI1 (gates must be
 # reproducible, no floating latest). pin clang and bpftool via PATH
 # so the gate is deterministic across hosts.
@@ -44,17 +49,24 @@ BPF_COMBINED := internal/bpf/probes/all.bpf.o
 # as an alias for compatibility.
 build: bpf-link
 	@if [ -f /usr/include/bpf/libbpf.h ]; then \
-		echo "build: libbpf headers found, building with BPF support"; \
-		$(GO) build -tags bpf ./cmd/edr-agent ./cmd/edrctl; \
+		echo "build: libbpf headers found, building with BPF support (v$(VERSION))"; \
+		$(GO) build -tags bpf -ldflags="$(LDFLAGS)" ./cmd/edr-agent ./cmd/edrctl; \
 	else \
-		echo "build: no libbpf headers, building stub BPF"; \
-		$(GO) build ./cmd/edr-agent ./cmd/edrctl ./cmd/edr-sensor ./cmd/edr-orchestrator ./cmd/edr-enforcer ./cmd/edr-supervisor; \
+		echo "build: no libbpf headers, building stub BPF (v$(VERSION))"; \
+		$(GO) build -ldflags="$(LDFLAGS)" ./cmd/edr-agent ./cmd/edrctl ./cmd/edr-sensor ./cmd/edr-orchestrator ./cmd/edr-enforcer ./cmd/edr-supervisor; \
 	fi
 
 # v0.2 legacy: explicit BPF build.
 build-bpf: bpf-link
-	$(GO) build -tags bpf ./cmd/edr-agent ./cmd/edrctl
-	@echo "build-bpf: edr-agent + edrctl built with libbpf loader"
+	$(GO) build -tags bpf -ldflags="$(LDFLAGS)" ./cmd/edr-agent ./cmd/edrctl
+	@echo "build-bpf: edr-agent + edrctl built with libbpf loader (v$(VERSION))"
+
+# v0.9.1: release packages binaries as a versioned tarball.
+release: build
+	@mkdir -p dist
+	@cp edr-agent edrctl dist/
+	@tar czf dist/edr-v$(VERSION)-linux-amd64.tar.gz -C dist edr-agent edrctl
+	@echo "release: dist/edr-v$(VERSION)-linux-amd64.tar.gz"
 
 test:
 	$(GO) test ./...

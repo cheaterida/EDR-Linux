@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libbpf-dev clang llvm bpftool linux-tools-common linux-tools-$(uname -r) 2>/dev/null || true
+          # fallback: linux-tools-generic if specific version not found
+          sudo apt-get install -y -qq linux-tools-generic 2>/dev/null || true
+
+      - name: bpf-vmlinux
+        run: make bpf-vmlinux
+
+      - name: bpf-build + bpf-verify
+        run: make bpf-build bpf-verify
+
+      - name: go test
+        run: go test ./...
+
+      - name: go vet
+        run: go vet ./internal/... ./cmd/...
+
+      - name: go fmt
+        run: |
+          go run mvdan.cc/gofumpt@v0.7.0 -l . 2>/dev/null | grep -v '.tools/' > /tmp/fmt.diff || true
+          if [ -s /tmp/fmt.diff ]; then cat /tmp/fmt.diff; exit 1; fi
+          echo "fmt clean"
+
+      - name: smoke test (build-bpf)
+        run: make build-bpf
