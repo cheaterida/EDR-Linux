@@ -81,7 +81,8 @@ sudo bpftool link detach id 1      # → security_bpf LSM 阻断
 | **响应层** | kill/quarantine/nft/process_suspend | pidfd TOCTOU-safe kill，进程隔离 |
 | **日志完整性** | SHA-256 hash chain + HMAC | 篡改可检测，链状态自动恢复 |
 | **TLS 解密** | 无 | 本 EDR 不包含 TLS 解密（与 Aegis 差异） |
-| **自保护** | 14 个 BPF 探针 | 15 类事件覆盖，16 项自保护全部生效 |
+| **自保护** | 15 个 BPF 探针 | 15 类事件覆盖，16 项自保护全部生效 |
+| **文件操作监控** | file_mon 探针 (unlink/unlinkat/renameat) | BPF tracepoint 实时推送 |
 
 ---
 
@@ -173,7 +174,7 @@ edrctl (CLI)   ──Unix Socket──▶  Control Plane (HTTP API)
 | BPF 自保护 (security_bpf) | ✅ | ❌ 仅检测 |
 | ptrace 阻断 | ✅ 反杀 | ❌ 仅检测 |
 | fanotify 文件阻断 | ✅ inode 级 | ❌ 未激活 |
-| 文件删除检测 | ❌ 待补 | ✅ 检测 |
+| 文件删除检测 | ✅ file_mon BPF | ✅ 检测 |
 | TLS 解密 | ❌ | ✅ 33 uprobes |
 | 多内核预编译 | ❌ | ✅ 70+ .o |
 

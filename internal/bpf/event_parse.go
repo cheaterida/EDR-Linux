@@ -73,7 +73,8 @@ func ParseEvent(raw []byte) (Event, error) {
 	switch typ {
 	case EventExec, EventFork, EventExit, EventConnect, EventSelfProtect,
 		EventPtraceEnh, EventLDPreload, EventInstrument, EventPrivesc,
-		EventModuleLoad, EventModuleUnload, EventBPFOp:
+		EventModuleLoad, EventModuleUnload, EventBPFOp,
+		EventFileOp:
 	default:
 		return Event{}, fmt.Errorf("bpf event: unknown type %d", typ)
 	}
@@ -92,13 +93,15 @@ func ParseEvent(raw []byte) (Event, error) {
 
 	if typ == EventExec || typ == EventSelfProtect || typ == EventPtraceEnh ||
 		typ == EventLDPreload || typ == EventInstrument ||
-		typ == EventModuleLoad || typ == EventModuleUnload || typ == EventBPFOp {
+		typ == EventModuleLoad || typ == EventModuleUnload || typ == EventBPFOp ||
+		typ == EventFileOp {
 		ev.Filename = cStringN(raw[eventOffFilename : eventOffFilename+eventFilenameSize])
 	}
 	// ptrace_enh stores the ptrace request in _reserved; privesc stores the subtype;
 	// module load/unload stores subtype/flags/fd; bpf_op stores the bpf cmd.
 	if typ == EventPtraceEnh || typ == EventPrivesc ||
-		typ == EventModuleLoad || typ == EventModuleUnload || typ == EventBPFOp {
+		typ == EventModuleLoad || typ == EventModuleUnload || typ == EventBPFOp ||
+		typ == EventFileOp {
 		ev.Reserved = binary.LittleEndian.Uint32(raw[eventOffReserved:])
 	}
 	if typ == EventConnect {

@@ -1134,7 +1134,7 @@ func edr_deliver_event(ctx unsafe.Pointer, data unsafe.Pointer, size C.size_t) C
 		ev.Type == EventPtraceEnh || ev.Type == EventLDPreload ||
 		ev.Type == EventInstrument || ev.Type == EventPrivesc ||
 		ev.Type == EventModuleLoad || ev.Type == EventModuleUnload ||
-		ev.Type == EventBPFOp {
+		ev.Type == EventBPFOp || ev.Type == EventFileOp {
 		select {
 		case l.fastOut <- ev:
 		default:

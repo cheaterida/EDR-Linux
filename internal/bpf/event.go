@@ -28,6 +28,7 @@ const (
 	EventModuleLoad   // v0.7 rootkit: kernel module load (init_module/finit_module)
 	EventModuleUnload // v0.7 rootkit: kernel module unload (delete_module)
 	EventBPFOp        // v0.7 rootkit: bpf() syscall operation
+	EventFileOp       // v0.9.1: file operations (unlink/unlinkat/renameat)
 )
 
 func (t EventType) String() string {
@@ -58,6 +59,8 @@ func (t EventType) String() string {
 		return "module_unload"
 	case EventBPFOp:
 		return "bpf_op"
+	case EventFileOp:
+		return "file_op"
 	default:
 		return "unknown"
 	}

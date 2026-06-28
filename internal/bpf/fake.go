@@ -197,7 +197,7 @@ func (f *FakeLoader) pump() {
 			e.Type == EventPtraceEnh || e.Type == EventLDPreload ||
 			e.Type == EventInstrument || e.Type == EventPrivesc ||
 			e.Type == EventModuleLoad || e.Type == EventModuleUnload ||
-			e.Type == EventBPFOp {
+			e.Type == EventBPFOp || e.Type == EventFileOp {
 			select {
 			case f.fastOut <- e:
 			default:

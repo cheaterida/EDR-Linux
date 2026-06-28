@@ -27,7 +27,7 @@ LDFLAGS  = -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 # so the gate is deterministic across hosts.
 CLANG ?= clang
 BPFTOOL ?= bpftool
-BPF_PROBES := exec connect fork exit selfprotect ptrace_enh ldpreload instrument lsm_selfprotect privesc module bpfop bpf_guard lsm_bpf_guard
+BPF_PROBES := exec connect fork exit selfprotect ptrace_enh ldpreload instrument lsm_selfprotect privesc module bpfop bpf_guard lsm_bpf_guard file_mon
 BPF_CFLAGS := -O2 -g -target bpf -D__TARGET_ARCH_x86 -I. -I/usr/include
 BPF_INCLUDES := internal/bpf/probes/vmlinux.h
 BPF_SRCS := $(addprefix internal/bpf/probes/,$(addsuffix .bpf.c,$(BPF_PROBES)))

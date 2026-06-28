@@ -24,6 +24,7 @@
 #define EDR_EVENT_MODULE_LOAD  11
 #define EDR_EVENT_MODULE_UNLOAD 12
 #define EDR_EVENT_BPF_OP       13
+#define EDR_EVENT_FILE_OP      14  // v0.9.1: file operations (unlink/unlinkat/renameat)
 
 // edr_event is the payload written to the ring buffer by every
 // probe. The fields are densely packed; padding is explicit so

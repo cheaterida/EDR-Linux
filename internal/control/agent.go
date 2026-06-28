@@ -1057,6 +1057,8 @@ func (a *Agent) StartFastPath(loader bpf.Loader) {
 				a.handleFastPathModuleUnload(ev)
 			case bpf.EventBPFOp:
 				a.handleFastPathBPFOp(ev)
+			case bpf.EventFileOp:
+				a.handleFastPathFileOp(ev)
 			}
 		}
 	}()
@@ -1610,6 +1612,38 @@ func (a *Agent) handleFastPathBPFOp(ev bpf.Event) {
 		RuleID: "ROOTKIT-005", Category: "rootkit",
 		Subject: subj, Request: response.ActionRequest{Action: "network_isolate", RuleID: "ROOTKIT-005"},
 		Result: res,
+	})
+}
+
+// handleFastPathFileOp processes file operation events (unlink,
+// unlinkat, renameat) from the file_mon BPF probe. Events are
+// logged and evaluated by the policy engine against file rules.
+// v0.9.1: file operation monitoring.
+func (a *Agent) handleFastPathFileOp(ev bpf.Event) {
+	if a.currentAuditSink() == nil {
+		return
+	}
+	opNames := map[uint32]string{1: "unlinkat", 2: "unlink", 3: "renameat"}
+	opName := opNames[ev.Reserved]
+	if opName == "" {
+		opName = "unknown"
+	}
+
+	subj := map[string]any{
+		"pid":      ev.PID,
+		"comm":     ev.Comm,
+		"filename": ev.Filename,
+		"file_op":  opName,
+		"uid":      ev.UID,
+	}
+	a.logEvent(eventlog.Event{
+		EventID:  fmt.Sprintf("file-op-%d-%d", ev.PID, time.Now().UnixNano()),
+		Category: "file",
+		Severity: "medium",
+		Subject:  subj,
+		Action:   "observe",
+		Decision: "alert",
+		RuleID:   "FILEOP-001",
 	})
 }
 
