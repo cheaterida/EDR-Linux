@@ -511,16 +511,16 @@ func (a *Agent) CheckCPULimits(tracker *collector.CPULimitTracker, threshold flo
 		})
 		switch action {
 		case "kill":
-			a.Responder.Apply(response.Request{
-				PID: pid, ProcessName: proc.Name, ProcessPath: proc.Path,
+			a.Responder.Apply(response.ActionRequest{
+				PID: pid, ProcessPath: proc.Path,
 				StartTicks: proc.StartTicks, Action: "kill",
-				RuleID: ruleID, Severity: "high",
+				RuleID: ruleID,
 			})
 		case "process_suspend":
-			a.Responder.Apply(response.Request{
-				PID: pid, ProcessName: proc.Name, ProcessPath: proc.Path,
+			a.Responder.Apply(response.ActionRequest{
+				PID: pid, ProcessPath: proc.Path,
 				StartTicks: proc.StartTicks, Action: "process_suspend",
-				RuleID: ruleID, Severity: "high",
+				RuleID: ruleID,
 			})
 		}
 	}

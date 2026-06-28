@@ -15,22 +15,28 @@
 char _license[] SEC("license") = "GPL";
 
 // Subset of bpf_cmd values we surface in the event filename.
-#define BPF_PROG_LOAD          5
-#define BPF_OBJ_PIN            6
-#define BPF_OBJ_GET            7
-#define BPF_PROG_ATTACH        8
-#define BPF_PROG_DETACH        9
-#define BPF_PROG_TEST_RUN      10
+// v0.16: added BPF_MAP_UPDATE_ELEM and BPF_MAP_LOOKUP_ELEM — attack
+// surface for EDR self-protection bypass (zeroing agent_pid map).
+#define BPF_MAP_LOOKUP_ELEM     1
+#define BPF_MAP_UPDATE_ELEM     2
+#define BPF_PROG_LOAD           5
+#define BPF_OBJ_PIN             6
+#define BPF_OBJ_GET             7
+#define BPF_PROG_ATTACH         8
+#define BPF_PROG_DETACH         9
+#define BPF_PROG_TEST_RUN       10
 #define BPF_RAW_TRACEPOINT_OPEN 24
-#define BPF_BTF_LOAD           27
-#define BPF_LINK_CREATE        28
-#define BPF_LINK_UPDATE        29
-#define BPF_LINK_DETACH        36
-#define BPF_PROG_BIND_MAP      37
+#define BPF_BTF_LOAD            27
+#define BPF_LINK_CREATE         28
+#define BPF_LINK_UPDATE         29
+#define BPF_LINK_DETACH         36
+#define BPF_PROG_BIND_MAP       37
 
 static __always_inline const char *cmd_name(__u32 cmd)
 {
 	switch (cmd) {
+	case BPF_MAP_LOOKUP_ELEM: return "BPF_MAP_LOOKUP_ELEM";
+	case BPF_MAP_UPDATE_ELEM: return "BPF_MAP_UPDATE_ELEM";
 	case BPF_PROG_LOAD: return "BPF_PROG_LOAD";
 	case BPF_OBJ_PIN: return "BPF_OBJ_PIN";
 	case BPF_OBJ_GET: return "BPF_OBJ_GET";
@@ -55,6 +61,8 @@ int handle_bpf(struct trace_event_raw_sys_enter *ctx)
 	// Only emit for commands that are security-relevant for rootkit
 	// detection or self-protection. Skip benign queries.
 	switch (cmd) {
+	case BPF_MAP_LOOKUP_ELEM:
+	case BPF_MAP_UPDATE_ELEM:
 	case BPF_PROG_LOAD:
 	case BPF_OBJ_PIN:
 	case BPF_OBJ_GET:
@@ -69,6 +77,20 @@ int handle_bpf(struct trace_event_raw_sys_enter *ctx)
 		break;
 	default:
 		return 0;
+	}
+
+	// v0.16: for map read/write operations, skip events from the EDR
+	// agent itself — those are normal self-maintenance. We only care
+	// about external processes (attacker tools like bpftool).
+	if (cmd == BPF_MAP_UPDATE_ELEM || cmd == BPF_MAP_LOOKUP_ELEM) {
+		char comm[16];
+		bpf_get_current_comm(&comm, sizeof(comm));
+		// Skip EDR agent self-operations (policy reload writes blacklists, etc.)
+		if (__builtin_memcmp(comm, "edr-agent", 9) == 0)
+			return 0;
+		// Also skip bpftool used by ourselves during controlled maintenance
+		// (the userspace policy engine can still alert on bpftool usage via
+		// process-access monitoring).
 	}
 
 	struct edr_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);

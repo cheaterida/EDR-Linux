@@ -615,7 +615,7 @@ func printProcTree(raw []byte, detail bool, filter string) {
 		Children []int
 	}
 	nodes := make(map[int]*node)
-	for pidStr, v := range result.Nodes {
+	for _, v := range result.Nodes {
 		m, _ := v.(map[string]any)
 		if m == nil {
 			continue
@@ -728,13 +728,10 @@ func printProcTree(raw []byte, detail bool, filter string) {
 		sortInts(n.Children)
 		for i, c := range n.Children {
 			last := i == len(n.Children)-1
+			_ = last // v0.9.1: kept for future tree-rendering context
 			p := prefix + childPrefix
-			if last && depth > 0 {
-				// Find if any ancestors have more siblings
-				render(c, depth+1, prefix+childPrefix)
-			} else {
-				render(c, depth+1, prefix+childPrefix)
-			}
+			_ = p
+			render(c, depth+1, prefix+childPrefix)
 		}
 	}
 

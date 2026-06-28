@@ -30,6 +30,10 @@ type Process struct {
 	EUID        string `json:"euid,omitempty"`
 	ContainerID string `json:"container_id,omitempty"`
 	CapEff      string `json:"cap_eff,omitempty"` // v0.6: effective capability mask
+
+	// v0.8 CPU limit tracking: cumulative ticks from /proc/pid/stat
+	UTime uint64 `json:"-"`
+	STime uint64 `json:"-"`
 }
 
 type Connection struct {
@@ -132,6 +136,8 @@ func readProcesses(root string) []Process {
 			EUID:        euid,
 			CapEff:      capEff,
 			ContainerID: containerID,
+			UTime:       readCPUTicksFromStat(string(statBytes), 14),
+			STime:       readCPUTicksFromStat(string(statBytes), 15),
 		})
 	}
 	return out
@@ -151,6 +157,24 @@ func readPPIDFromStat(stat string) int {
 	}
 	ppid, _ := strconv.Atoi(fields[1])
 	return ppid
+}
+
+// readCPUTicksFromStat extracts a specific field from /proc/pid/stat
+// content. Fields are numbered from 1 (pid). utime is field 14, stime
+// is field 15. Returns 0 if the field cannot be parsed.
+func readCPUTicksFromStat(stat string, field int) uint64 {
+	closeParen := strings.LastIndex(stat, ")")
+	if closeParen < 0 || closeParen+2 >= len(stat) {
+		return 0
+	}
+	fields := strings.Fields(stat[closeParen+2:])
+	// fields[0] = state, fields[1] = ppid, ..., fields[11] = utime, fields[12] = stime
+	idx := field - 3 // field 14 → idx 11, field 15 → idx 12
+	if idx < 0 || idx >= len(fields) {
+		return 0
+	}
+	v, _ := strconv.ParseUint(fields[idx], 10, 64)
+	return v
 }
 
 // readProcComm reads the comm name for a given PID from /proc.

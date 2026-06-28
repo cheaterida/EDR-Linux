@@ -59,6 +59,9 @@ type MergedCollector struct {
 	// v0.8 rootkit: remote addresses observed by BPF connect events.
 	// Used for ConnTracker vs /proc/net/tcp hidden connection detection.
 	seenAddrs map[string]time.Time
+
+	// v0.8 cpulimit: per-process CPU usage tracker.
+	CPUTracker *CPULimitTracker
 }
 
 // NewMergedCollector wires the two sources. b may be nil, in
@@ -87,6 +90,17 @@ func (m *MergedCollector) Snapshot() (Snapshot, error) {
 		m.drainBPF(&snap)
 	}
 	m.tree.Update(&snap)
+
+	// CPU sampling: record per-process CPU ticks for anomaly detection.
+	if m.CPUTracker != nil {
+		now := time.Now().UTC()
+		for i := range snap.Processes {
+			m.CPUTracker.Sample(snap.Processes[i].PID,
+				snap.Processes[i].UTime,
+				snap.Processes[i].STime, now)
+		}
+	}
+
 	return snap, err
 }
 

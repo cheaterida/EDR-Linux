@@ -152,6 +152,13 @@ type config struct {
 
 	// v0.7 rootkit detection
 	Rootkit rootkitConfig `json:"rootkit_detection"`
+
+	// v0.8 admin token
+	AdminAuth adminAuthConfig `json:"admin_auth"`
+}
+
+type adminAuthConfig struct {
+	AdminKeyPath string `json:"admin_key_path"`
 }
 
 // v0.5 config types
@@ -667,7 +674,6 @@ func main() {
 				}
 			}
 		}
-		}
 	}
 }
 
@@ -1075,5 +1081,4 @@ func readAgentCgroupFreezePaths() []string {
 		paths = append(paths, "/sys/fs/cgroup"+cgPath+"/cgroup.freeze")
 	}
 	return paths
-}
 }

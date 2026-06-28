@@ -1,0 +1,32 @@
+{
+  "schema_version": "v0.1",
+  "checks": [
+    {"id":"B001","path":"/etc/passwd","must_exist":true,"max_mode":"0644"},
+    {"id":"B002","path":"/etc/shadow","must_exist":true,"max_mode":"0640"},
+    {"id":"B003","path":"/etc/ssh/sshd_config","must_exist":true,"max_mode":"0644"},
+
+    {"id":"BS01","path":"/var/www/edgeops","must_exist":true,"max_mode":"0755"},
+    {"id":"BS02","path":"/var/www/edgeops/index.html","must_exist":true,"max_mode":"0644"},
+    {"id":"BS03","path":"/var/www/edgeops/assets","must_exist":true,"max_mode":"0755"},
+
+    {"id":"BS04","path":"/opt/edgeops/lib","must_exist":true,"max_mode":"0755"},
+    {"id":"BS05","path":"/opt/edgeops/lib/edgeops-api-app.jar","must_exist":true,"max_mode":"0644"},
+    {"id":"BS06","path":"/opt/edgeops/lib/edgeops-diagnostic-app.jar","must_exist":true,"max_mode":"0644"},
+    {"id":"BS07","path":"/opt/edgeops/lib/edgeops-report-app.jar","must_exist":true,"max_mode":"0644"},
+    {"id":"BS08","path":"/opt/edgeops/lib/edgeops-plugin-host-app.jar","must_exist":true,"max_mode":"0644"},
+    {"id":"BS09","path":"/opt/edgeops/lib/edgeops-worker-app.jar","must_exist":true,"max_mode":"0644"},
+    {"id":"BS10","path":"/opt/edgeops/lib/edgeops-scheduler-app.jar","must_exist":true,"max_mode":"0644"},
+
+    {"id":"BS11","path":"/var/lib/edgeops/keys","must_exist":true,"max_mode":"0700"},
+    {"id":"BS12","path":"/var/lib/edgeops","must_exist":true,"max_mode":"0750"},
+
+    {"id":"BS13","path":"/etc/nginx/nginx.conf","must_exist":true,"max_mode":"0644"},
+    {"id":"BS14","path":"/etc/nginx/sites-available","must_exist":true,"max_mode":"0755"},
+    {"id":"BS15","path":"/etc/postgresql","must_exist":true,"max_mode":"0755"},
+    {"id":"BS16","path":"/etc/redis/redis.conf","must_exist":true,"max_mode":"0640"},
+
+    {"id":"BS17","path":"/opt/edr/edr-agent","must_exist":true,"max_mode":"0755"},
+    {"id":"BS18","path":"/etc/edr/policy.json","must_exist":true,"max_mode":"0640"},
+    {"id":"BS19","path":"/etc/edr/agent.json","must_exist":true,"max_mode":"0640"}
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "transport": {
+    "sensor_socket": "/run/edr-sensor.sock",
+    "orchestrator_socket": "/run/edr-orchestrator.sock",
+    "enforcer_socket": "/run/edr-enforcer.sock",
+    "shared_secret": "CHANGE_ME_GENERATE_32_CHAR_RANDOM",
+    "event_push_every_sec": 2
+  },
+  "supervisor": {
+    "enabled": true,
+    "url": "http://172.16.1.187:9099",
+    "shared_secret": "CHANGE_ME_GENERATE_32_CHAR_RANDOM",
+    "heartbeat_sec": 5
+  },
+  "root_session": {
+    "mode": "audit",
+    "secret": "CHANGE_ME_GENERATE_32_CHAR_RANDOM",
+    "scan_every_sec": 5,
+    "challenge_ttl_sec": 30,
+    "grace_sec": 30,
+    "bypass_ttl_sec": 300
+  },
+  "ha": {
+    "instance_id": "target-01",
+    "peer": "target-02",
+    "priority": 100,
+    "heartbeat_sec": 1,
+    "suspect_after_sec": 3,
+    "down_after_sec": 5,
+    "lease_ttl_sec": 10,
+    "restart_cooldown_sec": 30,
+    "restart_command": "systemctl restart edr-orchestrator"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "supervisor": {
+    "enabled": true,
+    "url": "http://172.16.1.187:9099",
+    "shared_secret": "CHANGE_ME_GENERATE_32_CHAR_RANDOM",
+    "heartbeat_sec": 5,
+    "request_timeout_sec": 10
+  },
+  "tls": {
+    "enabled": false
+  },
+  "state_path": "/var/lib/edr/supervisor_state.json",
+  "evidence_dir": "/var/lib/edr/evidence",
+  "decision_cooldown_sec": 30,
+  "host_stale_after_sec": 10
+}

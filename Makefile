@@ -39,15 +39,19 @@ BPF_COMBINED := internal/bpf/probes/all.bpf.o
         test-chain test-reset test-scenarios systemd-verify \
         bpf-vmlinux bpf-build bpf-link bpf-verify build-bpf harden
 
-build:
-	$(GO) build ./cmd/edr-agent ./cmd/edrctl ./cmd/edr-sensor ./cmd/edr-orchestrator ./cmd/edr-enforcer ./cmd/edr-supervisor
+# v0.9.1: unified build. Try BPF first; fall back to stub on hosts
+# without libbpf headers. The old separate build-bpf target is kept
+# as an alias for compatibility.
+build: bpf-link
+	@if [ -f /usr/include/bpf/libbpf.h ]; then \
+		echo "build: libbpf headers found, building with BPF support"; \
+		$(GO) build -tags bpf ./cmd/edr-agent ./cmd/edrctl; \
+	else \
+		echo "build: no libbpf headers, building stub BPF"; \
+		$(GO) build ./cmd/edr-agent ./cmd/edrctl ./cmd/edr-sensor ./cmd/edr-orchestrator ./cmd/edr-enforcer ./cmd/edr-supervisor; \
+	fi
 
-# v0.2: cgo-enabled build path. Pulls in loader_libbpf.go +
-# main_libbpf.go (//go:build bpf). Default `build` stays
-# CGO-free so `go test ./...` works on hosts without libbpf
-# headers or CAP_BPF. R-C1: any cgo failure here surfaces —
-# the agent must not silently fall back to procfs-only when
-# the operator asked for ring0 by passing -tags bpf.
+# v0.2 legacy: explicit BPF build.
 build-bpf: bpf-link
 	$(GO) build -tags bpf ./cmd/edr-agent ./cmd/edrctl
 	@echo "build-bpf: edr-agent + edrctl built with libbpf loader"
