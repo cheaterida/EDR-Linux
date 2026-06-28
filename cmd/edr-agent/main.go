@@ -37,6 +37,11 @@ var (
 	cachedHostname string
 	cachedUID      int
 	cachedBootID   string
+
+	// Injected by Makefile ldflags at build time.
+	// go build -ldflags="-X main.version=v0.9.1 -X main.buildTime=..."
+	version   = "dev"
+	buildTime = "unknown"
 )
 
 func cacheRuntimeVars() {
@@ -231,7 +236,14 @@ func main() {
 	cfgPath := flag.String("config", "configs/agent.json", "agent config path")
 	once := flag.Bool("once", false, "run one collection cycle and exit")
 	guardianMode := flag.Bool("guardian", false, "run as guardian watchdog process")
+	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.Parse()
+
+	// v0.9.1: --version support. Values injected via Makefile ldflags.
+	if *showVersion {
+		fmt.Printf("edr-agent %s (built %s)\n", version, buildTime)
+		os.Exit(0)
+	}
 
 	// Guardian mode: lightweight watchdog that monitors the main agent
 	// heartbeat and re-execs the agent if it stalls. The guardian does

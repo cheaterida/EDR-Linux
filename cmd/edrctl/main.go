@@ -28,14 +28,23 @@ const (
 	unixRequestRetryInterval = 100 * time.Millisecond
 )
 
-var unixDial = func(network, address string) (net.Conn, error) {
-	return net.Dial(network, address)
-}
+var (
+	unixDial = func(network, address string) (net.Conn, error) {
+		return net.Dial(network, address)
+	}
+	version   = "dev"
+	buildTime = "unknown"
+)
 
 func main() {
 	socket := flag.String("socket", "var/run/edr-agent.sock", "agent unix socket")
 	jsonFlag := flag.Bool("json", false, "output raw JSON instead of formatted text")
+	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("edrctl %s (built %s)\n", version, buildTime)
+		os.Exit(0)
+	}
 	if flag.NArg() == 0 {
 		usage()
 	}
