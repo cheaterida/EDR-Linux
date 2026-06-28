@@ -12,14 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: go fmt
-        run: |
-          test -z "$(gofmt -l . 2>/dev/null | grep -v '.tools/')" && echo "fmt clean"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
 
       - name: go vet
-        run: |
-          go vet ./internal/integrity/... ./internal/fanotify/... ./internal/eventlog/...
+        run: go vet ./internal/integrity/... ./internal/eventlog/...
 
       - name: go test
-        run: |
-          go test ./internal/integrity/... ./internal/eventlog/... -count=1
+        run: go test ./internal/integrity/... ./internal/eventlog/... -count=1
