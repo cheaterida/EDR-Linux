@@ -155,28 +155,18 @@ edrctl (CLI)   ──Unix Socket──▶  Control Plane (HTTP API)
                     MergedCollector
             (procfs + BPF ringbuf + fanotify)
                             │
-                    14 BPF Probes
+                    15 BPF Probes
        exec | connect | fork | exit | selfprotect |
        ptrace | ldpreload | instrument | privesc |
        lsm_selfprotect | lsm_bpf_guard | bpf_guard |
-       module | bpfop
+       module | bpfop | file_mon
 ```
 
 ---
 
-## 与商业 EDR 对比
+## 设计理念
 
-本项目的自保护体系在对阿里云 Aegis v12.93 的完整攻防研究后构建。详见 [`research/aliyun-edr/`](research/aliyun-edr/)。
-
-| 维度 | 本 EDR | Aegis v12.93 |
-|------|:---:|:---:|
-| SIGSTOP 防护 | ✅ | ❌ |
-| BPF 自保护 (security_bpf) | ✅ | ❌ 仅检测 |
-| ptrace 阻断 | ✅ 反杀 | ❌ 仅检测 |
-| fanotify 文件阻断 | ✅ inode 级 | ❌ 未激活 |
-| 文件删除检测 | ✅ file_mon BPF | ✅ 检测 |
-| TLS 解密 | ❌ | ✅ 33 uprobes |
-| 多内核预编译 | ❌ | ✅ 70+ .o |
+自保护体系在对商业 Linux EDR 的完整攻防研究后构建，目标是在每一层都做到 **enforcement 而非仅遥测**。详见 `research/` 目录下的攻防分析。
 
 ---
 
@@ -186,7 +176,7 @@ edrctl (CLI)   ──Unix Socket──▶  Control Plane (HTTP API)
 EDR_MVP/
 ├── cmd/            # edr-agent, edrctl, edr-sensor, edr-orchestrator, edr-enforcer, edr-supervisor
 ├── internal/       # 核心逻辑
-│   ├── bpf/        # BPF loader (libbpf CGo) + 14 probes
+│   ├── bpf/        # BPF loader (libbpf CGo) + 15 probes
 │   ├── collector/  # procfs + BPF 合并采集器
 │   ├── control/    # 策略引擎 + Agent 主循环
 │   ├── fanotify/   # 文件访问拦截
