@@ -5,10 +5,10 @@
 ```
                        Internet
                           │
-                    8.137.201.209 (公网IP)
+                    <GATEWAY_PUBLIC_IP> (公网IP)
                           │
                ┌──────────┴──────────┐
-               │  172.16.1.188       │
+               │  <GATEWAY_IP>       │
                │  Gateway (网关)      │
                │  ─────────────────  │
                │  DNAT 转发:         │
@@ -18,7 +18,7 @@
                           │
           ┌───────────────┼───────────────┐
           │               │               │
-  172.16.1.186      172.16.1.187    (内网交换机)
+  <TARGET_IP>      <AUDIT_IP>    (内网交换机)
   Target (目标机)     Spare (审计中心)
   ──────────────     ────────────────
   nginx :443         edr-supervisor :9099
@@ -30,13 +30,13 @@
   Redis       :6379
 ```
 
-**三机共用的 SSH 凭证**：`root / WnfU3ieboz62oLrj`
+**三机共用的 SSH 凭证**：`root / <REDACTED_DEFAULT_PASSWORD>`
 
 ---
 
 ## 2. 机器角色与 EDR 功能分配
 
-| 功能 | 目标机 172.16.1.186 | 网关 172.16.1.188 | 审计中心 172.16.1.187 |
+| 功能 | 目标机 <TARGET_IP> | 网关 <GATEWAY_IP> | 审计中心 <AUDIT_IP> |
 |------|:---:|:---:|:---:|
 | **BPF 探针** | ✅ 全开 | ❌ 无业务进程 | ❌ 无业务进程 |
 | **fanotify** | ✅ 14路径 | ✅ /etc, /root/.ssh | ✅ EDR自身+系统 |
@@ -50,11 +50,11 @@
 
 ## 3. 编译环境准备
 
-### 3.1 目标机 (172.16.1.186) — 需要编译 BPF 探针
+### 3.1 目标机 (<TARGET_IP>) — 需要编译 BPF 探针
 
 ```bash
 # SSH 登录目标机
-ssh root@172.16.1.186
+ssh root@<TARGET_IP>
 
 # 安装编译依赖
 apt-get update && apt-get install -y \
@@ -79,7 +79,7 @@ apt-get update && apt-get install -y golang-1.22 git
 在目标机上编译（带 BPF），然后分发给网关和审计中心：
 
 ```bash
-# === 在目标机 (172.16.1.186) 上执行 ===
+# === 在目标机 (<TARGET_IP>) 上执行 ===
 
 cd /root
 git clone <edr-repo-url> edr-build && cd edr-build
@@ -112,10 +112,10 @@ cp edr-agent edrctl /opt/edr/
 cp internal/bpf/probes/all.bpf.o /opt/edr/probes/
 
 # 发给网关
-scp edr-agent edrctl root@172.16.1.188:/opt/edr/
+scp edr-agent edrctl root@<GATEWAY_IP>:/opt/edr/
 
 # 发给审计中心 (agent + supervisor)
-scp edr-agent edrctl edr-supervisor root@172.16.1.187:/opt/edr/
+scp edr-agent edrctl edr-supervisor root@<AUDIT_IP>:/opt/edr/
 ```
 
 ---
@@ -132,7 +132,7 @@ mkdir -p /var/log/edr
 mkdir -p /opt/edr/var/run
 ```
 
-### 5.2 目标机 (172.16.1.186) 部署
+### 5.2 目标机 (<TARGET_IP>) 部署
 
 ```bash
 # --- 部署二进制 ---
@@ -159,7 +159,7 @@ systemctl enable edr-agent
 systemctl start edr-agent
 ```
 
-### 5.3 网关 (172.16.1.188) 部署
+### 5.3 网关 (<GATEWAY_IP>) 部署
 
 ```bash
 # --- 部署二进制 (无需 BPF 探针) ---
@@ -182,7 +182,7 @@ systemctl enable edr-agent
 systemctl start edr-agent
 ```
 
-### 5.4 审计中心 (172.16.1.187) 部署
+### 5.4 审计中心 (<AUDIT_IP>) 部署
 
 ```bash
 # --- 部署二进制 ---
@@ -306,7 +306,7 @@ systemctl restart edr-agent
 在网关上启用 nftables 阻断：
 
 ```bash
-# 在网关 (172.16.1.188) 上:
+# 在网关 (<GATEWAY_IP>) 上:
 # 1. 编辑 /etc/edr/agent.json，nft.dry_run 改为 false
 sed -i '/"nft": {/,/}/{s/"dry_run": true/"dry_run": false/}' /etc/edr/agent.json
 
@@ -324,7 +324,7 @@ nft list table edr
 在目标机上启用 `kill` / `nft_block` / `quarantine` 动作：
 
 ```bash
-# 在目标机 (172.16.1.186) 上:
+# 在目标机 (<TARGET_IP>) 上:
 sed -i 's/"dry_run": true/"dry_run": false/' /etc/edr/agent.json
 sed -i '/"nft": {/,/}/{s/"dry_run": true/"dry_run": false/}' /etc/edr/agent.json
 sed -i 's/"monitor_only": true/"monitor_only": false/' /etc/edr/agent.json
@@ -364,23 +364,23 @@ edrctl --socket /var/run/edr-agent.sock metrics
 
 | 文件 | 用途 | 部署到 |
 |------|------|--------|
-| `configs/agent.target.json` | 目标机全功能 Agent 配置 | 172.16.1.186 → `/etc/edr/agent.json` |
-| `configs/agent.gateway.json` | 网关网络 Agent 配置 | 172.16.1.188 → `/etc/edr/agent.json` |
-| `configs/agent.spare.json` | 审计中心 Agent 配置 | 172.16.1.187 → `/etc/edr/agent.json` |
+| `configs/agent.target.json` | 目标机全功能 Agent 配置 | <TARGET_IP> → `/etc/edr/agent.json` |
+| `configs/agent.gateway.json` | 网关网络 Agent 配置 | <GATEWAY_IP> → `/etc/edr/agent.json` |
+| `configs/agent.spare.json` | 审计中心 Agent 配置 | <AUDIT_IP> → `/etc/edr/agent.json` |
 | `configs/policy.target.json` | 119条统一检测规则 | 三机 → `/etc/edr/policy.json` |
-| `configs/baseline.target.json` | 目标机22项基线检查 | 172.16.1.186 → `/etc/edr/baseline.json` |
-| `configs/baseline.gateway.json` | 网关7项基线检查 | 172.16.1.188 → `/etc/edr/baseline.json` |
-| `configs/baseline.spare.json` | 审计中心7项基线检查 | 172.16.1.187 → `/etc/edr/baseline.json` |
-| `configs/supervisor.target.json` | 远程 supervisor 配置 | 172.16.1.187 → `/etc/edr/supervisor.json` |
-| `configs/orchestrator.target.json` | 多机HA编排器(可选) | 172.16.1.186 → `/etc/edr/orchestrator.json` |
+| `configs/baseline.target.json` | 目标机22项基线检查 | <TARGET_IP> → `/etc/edr/baseline.json` |
+| `configs/baseline.gateway.json` | 网关7项基线检查 | <GATEWAY_IP> → `/etc/edr/baseline.json` |
+| `configs/baseline.spare.json` | 审计中心7项基线检查 | <AUDIT_IP> → `/etc/edr/baseline.json` |
+| `configs/supervisor.target.json` | 远程 supervisor 配置 | <AUDIT_IP> → `/etc/edr/supervisor.json` |
+| `configs/orchestrator.target.json` | 多机HA编排器(可选) | <TARGET_IP> → `/etc/edr/orchestrator.json` |
 | `systemd/edr-agent.service` | Agent systemd unit | 三机 → `/etc/systemd/system/` |
-| `systemd/edr-supervisor.service` | Supervisor systemd unit | 172.16.1.187 → `/etc/systemd/system/` |
+| `systemd/edr-supervisor.service` | Supervisor systemd unit | <AUDIT_IP> → `/etc/systemd/system/` |
 
 ---
 
 ## 10. 安全注意事项
 
-1. **立即修改 SSH 密码**：三机共用 `WnfU3ieboz62oLrj`，部署后应分别修改。
+1. **立即修改 SSH 密码**：三机共用 `<REDACTED_DEFAULT_PASSWORD>`，部署后应分别修改。
 2. **替换共享密钥**：`supervisor.target.json` 和 `orchestrator.target.json` 中 `CHANGE_ME_GENERATE_32_CHAR_RANDOM` 必须替换。
 3. **签署策略文件**：部署后用 `edrctl policy sign` 签名，防篡改。
 4. **ShopPulse JVM 用户 UID 确认**：`agent.target.json` 的 `allowed_uids` 默认 `[0, 1000]`，请根据实际 edgeops 服务用户调整。

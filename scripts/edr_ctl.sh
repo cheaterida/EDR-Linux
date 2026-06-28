@@ -1,12 +1,13 @@
 #!/bin/bash
 # edr_ctl.sh — EDR 三机统一控制脚本
-# 用法: bash edr_ctl.sh {start|stop|status|health|phase2|phase4|logs}
+# 用法: EDR_PASSWORD=<pw> GW=<gw_ip> TARGET=<ip> SPARE=<ip> bash edr_ctl.sh {start|stop|status|health|phase2|phase4|logs}
 set -euo pipefail
 
-SSHPASS="${EDR_PASSWORD:-WnfU3ieboz62oLrj}"
-GW="8.137.201.209"
-TARGET="172.16.1.186"
-SPARE="172.16.1.187"
+: "${EDR_PASSWORD:?set EDR_PASSWORD env var}"
+SSHPASS="$EDR_PASSWORD"
+GW="${GW:?set GW env var}"
+TARGET="${TARGET:?set TARGET env var}"
+SPARE="${SPARE:?set SPARE env var}"
 
 ssh_gw()  { sshpass -p "$SSHPASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@"$GW" "$@"; }
 ssh_hop() { sshpass -p "$SSHPASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@"$GW" "sshpass -p '$SSHPASS' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@$1 \"$2\""; }
@@ -98,6 +99,6 @@ case "${1:-}" in
     *)
         echo "用法: bash edr_ctl.sh {start|stop|status|health|phase2|phase4|logs [gw|target|spare]}"
         echo ""
-        echo "环境变量: EDR_PASSWORD  (默认: WnfU3ieboz62oLrj)"
+        echo "环境变量: EDR_PASSWORD  (通过 EDR_PASSWORD 环境变量设置)"
         ;;
 esac

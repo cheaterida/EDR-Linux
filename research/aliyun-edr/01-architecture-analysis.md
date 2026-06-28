@@ -1,6 +1,6 @@
 # 阿里云 Aegis EDR v12.93 架构分析
 
-> 靶机: 8.137.224.183 / Ubuntu 24.04 / Kernel 6.8.0-124-generic
+> 靶机: <ALIBABA_CLOUD_ECS> / Ubuntu 24.04 / Kernel 6.8.0-124-generic
 > 分析日期: 2026-06-26
 
 ---

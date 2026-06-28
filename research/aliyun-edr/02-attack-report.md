@@ -1,6 +1,6 @@
 # 阿里云 Aegis EDR v12.93 自保护攻破报告
 
-> 靶机: 8.137.224.183 / Ubuntu 24.04 / Kernel 6.8.0-124-generic
+> 靶机: <ALIBABA_CLOUD_ECS> / Ubuntu 24.04 / Kernel 6.8.0-124-generic
 > 攻击时间: 2026-06-26 10:40~10:55
 > 攻击者: root
 > 关联: [架构分析](./01-architecture-analysis.md)

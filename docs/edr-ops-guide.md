@@ -1,7 +1,7 @@
 # EDR v0.16 — ShopPulse 防护运维手册
 
 **版本**: v0.16  
-**环境**: 阿里云 ECS 三机内网 (172.16.1.188/186/187)  
+**环境**: 阿里云 ECS 三机内网 (<GATEWAY_LAN_IP>/186/187)  
 **最后更新**: 2026-06-21
 
 ---
@@ -12,20 +12,20 @@
 
 ```bash
 # 替换 <PASSWORD> 为实际 SSH 密码
-SSHPASS='WnfU3ieboz62oLrj'
+SSHPASS='<SET_BEFORE_USE>'
 
 # 网关 (直连)
-sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
+sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
   'systemctl start edr-agent'
 
 # 目标机 (跳板)
-sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
-  "sshpass -p '$SSHPASS' ssh root@172.16.1.186 \
+sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
+  "sshpass -p '$EDR_SSH_PASS' ssh root@<TARGET_IP> \
     'systemctl start edr-agent'"
 
 # 审计中心 (跳板)
-sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
-  "sshpass -p '$SSHPASS' ssh root@172.16.1.187 \
+sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
+  "sshpass -p '$EDR_SSH_PASS' ssh root@<SPARE_IP> \
     'systemctl start edr-agent edr-supervisor'"
 ```
 
@@ -33,7 +33,7 @@ sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
 
 ```bash
 # 网关
-sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
+sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
   'systemctl stop edr-agent'
 
 # 目标机 + 审计中心 (同上，替换 start → stop)
@@ -46,11 +46,11 @@ for ip in "188:direct" "186:hop" "187:hop"; do
   IFS=':' read -r n m <<< "$ip"
   echo "=== 172.16.1.$n ==="
   if [ "$m" = "direct" ]; then
-    sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
+    sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
       "/opt/edr/edrctl --socket /run/edr-agent.sock health"
   else
-    sshpass -p "$SSHPASS" ssh root@8.137.201.209 \
-      "sshpass -p '$SSHPASS' ssh root@172.16.1.$n \
+    sshpass -p "$EDR_SSH_PASS" ssh root@<GATEWAY_IP> \
+      "sshpass -p '$EDR_SSH_PASS' ssh root@172.16.1.$n \
         '/opt/edr/edrctl --socket /run/edr-agent.sock health'"
   fi
 done
@@ -274,7 +274,7 @@ kernel.unprivileged_bpf_disabled = 1
 
 ### 6.9 SSH root 密码
 
-**蓝队共用凭证**: `root / WnfU3ieboz62oLrj`
+**蓝队共用凭证**: `root / <SET_BEFORE_USE>`
 
 > **EDR 部署未修改此密码**。部署其他安全策略前请与其他队员确认密码变更。
 
@@ -334,7 +334,7 @@ systemctl restart edr-agent
 
 ## 九、快照恢复后重新部署 (本地编译 BPF)
 
-目标机 (172.16.1.186) 已安装 clang + libbpf-dev，可在本地编译 BPF 探针：
+目标机 (<TARGET_IP>) 已安装 clang + libbpf-dev，可在本地编译 BPF 探针：
 
 ```bash
 # 1. 编译 BPF (在目标机上)

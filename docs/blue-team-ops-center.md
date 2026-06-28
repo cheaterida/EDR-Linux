@@ -9,7 +9,7 @@
 ## 一、系统拓扑
 
 ```
-Internet → 公网 8.137.201.209
+Internet → 公网 <GATEWAY_PUBLIC_IP>
               │
               ▼
          ┌─────────────────────────────────┐
@@ -39,7 +39,7 @@ Internet → 公网 8.137.201.209
 | 目标机 | 172.16.1.186 | WAF + EDR + ShopPulse | 6.8.0-124 |
 | 审计中心 | 172.16.1.187 | EDR + Supervisor | 6.8.0-124 |
 
-三机 SSH: `root / WnfU3ieboz62oLrj`
+三机 SSH: root / <SET_BEFORE_USE>
 
 ---
 
